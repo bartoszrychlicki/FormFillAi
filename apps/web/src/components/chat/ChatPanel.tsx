@@ -56,6 +56,31 @@ interface Message {
   text: string;
 }
 
+interface UploadedFile {
+  name: string;
+  type: string;
+  size: number;
+  base64Data: string;
+}
+
+const ALLOWED_FILE_TYPES = {
+  "application/pdf": { extension: ".pdf", label: "PDF" },
+  "text/csv": { extension: ".csv", label: "CSV" },
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+    extension: ".xlsx",
+    label: "Excel",
+  },
+  "application/vnd.ms-excel": { extension: ".xls", label: "Excel" },
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
+    extension: ".docx",
+    label: "Word",
+  },
+  "text/plain": { extension: ".txt", label: "Text" },
+  "text/markdown": { extension: ".md", label: "Markdown" },
+} as const;
+
+const MAX_FILE_SIZE = 350 * 1024 * 1024; // 350 MB (Claude's limit)
+
 export function ChatPanel({
   schemaUrl,
   title,
@@ -77,6 +102,9 @@ export function ChatPanel({
   const [schemaDefinition, setSchemaDefinition] = useState<unknown>(null);
   const [schemaLoadError, setSchemaLoadError] = useState<string | null>(null);
   const [collectedData, setCollectedData] = useState<Record<string, unknown>>({});
+  const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const messageCounter = useRef(0);
   const nextMessageId = () => {
@@ -199,7 +227,11 @@ export function ChatPanel({
         const startResponse = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ schema: definition, schemaUrl }),
+          body: JSON.stringify({
+            schema: definition,
+            schemaUrl,
+            ...(uploadedFile ? { file: uploadedFile } : {}),
+          }),
         });
 
         if (!startResponse.ok) {
@@ -280,6 +312,7 @@ export function ChatPanel({
         body: JSON.stringify({
           sessionId,
           reply: fieldId ? { fieldId, value: trimmed } : { value: trimmed },
+          ...(uploadedFile ? { file: uploadedFile } : {}),
         }),
       });
 
@@ -344,6 +377,152 @@ export function ChatPanel({
     }
     return JSON.stringify(schemaDefinition, null, 2);
   }, [schemaDefinition]);
+
+  const validateFile = (file: File): string | null => {
+    if (!Object.keys(ALLOWED_FILE_TYPES).includes(file.type)) {
+      return `File type "${file.type}" is not supported. Please upload PDF, CSV, Excel, Word, TXT, or Markdown files.`;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return `File size (${(file.size / 1024 / 1024).toFixed(2)} MB) exceeds the maximum allowed size of 350 MB.`;
+    }
+
+    return null;
+  };
+
+  const convertFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          const base64 = reader.result.split(",")[1];
+          resolve(base64);
+        } else {
+          reject(new Error("Failed to read file as base64"));
+        }
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileUpload = async (file: File) => {
+    setFileUploadError(null);
+
+    const validationError = validateFile(file);
+    if (validationError) {
+      setFileUploadError(validationError);
+      return;
+    }
+
+    try {
+      const base64Data = await convertFileToBase64(file);
+      const uploadedFileData = {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        base64Data,
+      };
+      setUploadedFile(uploadedFileData);
+      setFileUploadError(null);
+
+      // If conversation has already started, trigger immediate file analysis
+      if (sessionId && schema) {
+        await analyzeUploadedFile(uploadedFileData);
+      }
+    } catch (error) {
+      console.error("Failed to process file", error);
+      setFileUploadError("Failed to process the file. Please try again.");
+    }
+  };
+
+  const analyzeUploadedFile = async (file: UploadedFile) => {
+    if (!sessionId || !schema) return;
+
+    setIsPending(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/chat/analyze-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          file,
+          schemaId: schema.id,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to analyze file: ${response.status}`);
+      }
+
+      const payload = await response.json();
+
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: nextMessageId(),
+          role: "bot",
+          text: payload.analysis,
+        },
+      ]);
+    } catch (err) {
+      console.error("Failed to analyze uploaded file", err);
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: nextMessageId(),
+          role: "bot",
+          text: `I received your file "${file.name}" but encountered an issue analyzing it. I'll still use it to help fill the form - please continue answering the questions.`,
+        },
+      ]);
+    } finally {
+      setIsPending(false);
+    }
+  };
+
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      void handleFileUpload(file);
+    }
+  };
+
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer.types.includes("Files")) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    // Only set to false if we're leaving the container entirely
+    const relatedTarget = event.relatedTarget as Node | null;
+    const currentTarget = event.currentTarget as Node;
+    if (!relatedTarget || !currentTarget.contains(relatedTarget)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+
+    const file = event.dataTransfer.files[0];
+    if (file) {
+      void handleFileUpload(file);
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setUploadedFile(null);
+    setFileUploadError(null);
+  };
 
   return (
     <section className="flex h-full flex-col gap-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -418,18 +597,118 @@ export function ChatPanel({
             disabled={isInitialising || isPending || conversationStatus === "completed"}
           />
         ) : null}
-        <label className="text-sm font-medium" htmlFor="chat-reply">
-          Reply
-        </label>
-        <textarea
-          id="chat-reply"
-          aria-label="Reply"
-          className="h-24 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
-          value={inputValue}
-          onChange={(event) => setInputValue(event.target.value)}
-          onKeyDown={handleInputKeyDown}
-          disabled={isInitialising || isPending || conversationStatus === "completed"}
-        />
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium" htmlFor="chat-reply">
+              Reply
+            </label>
+            <input
+              type="file"
+              id="file-upload"
+              className="hidden"
+              accept=".pdf,.csv,.xlsx,.xls,.docx,.txt,.md"
+              onChange={handleFileInputChange}
+              disabled={isInitialising || isPending || conversationStatus === "completed"}
+            />
+            <label
+              htmlFor="file-upload"
+              className="cursor-pointer text-xs text-slate-600 hover:text-slate-900"
+              title="Attach document"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                />
+              </svg>
+            </label>
+          </div>
+          <div
+            className="relative"
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <textarea
+              id="chat-reply"
+              aria-label="Reply"
+              className={`h-24 w-full resize-none rounded-md border px-3 py-2 text-sm shadow-sm transition focus:outline-none focus:ring-2 ${
+                isDragging
+                  ? "border-sky-500 bg-sky-50 ring-2 ring-sky-200"
+                  : "border-slate-200 bg-white focus:border-sky-500 focus:ring-sky-200"
+              }`}
+              value={inputValue}
+              onChange={(event) => setInputValue(event.target.value)}
+              onKeyDown={handleInputKeyDown}
+              disabled={isInitialising || isPending || conversationStatus === "completed"}
+              placeholder={isDragging ? "Drop file here..." : "Type your reply..."}
+            />
+            {isDragging && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md border-2 border-dashed border-sky-500 bg-sky-50/80">
+                <div className="flex flex-col items-center gap-2">
+                  <svg
+                    className="h-8 w-8 text-sky-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+                  <p className="text-sm font-medium text-sky-700">Drop file to attach</p>
+                </div>
+              </div>
+            )}
+          </div>
+          {uploadedFile && (
+            <div className="flex flex-wrap gap-2">
+              <div className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5">
+                <svg
+                  className="h-4 w-4 flex-shrink-0 text-slate-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                <span className="max-w-[200px] truncate text-xs font-medium text-slate-700">
+                  {uploadedFile.name}
+                </span>
+                <span className="text-xs text-slate-500">
+                  {(uploadedFile.size / 1024).toFixed(1)} KB
+                </span>
+                <button
+                  type="button"
+                  onClick={handleRemoveFile}
+                  className="rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                  aria-label="Remove file"
+                >
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+          {fileUploadError && <p className="text-xs text-red-600">{fileUploadError}</p>}
+        </div>
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span>
             {conversationStatus === "completed"

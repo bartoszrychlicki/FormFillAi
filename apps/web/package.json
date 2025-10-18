@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.33",
+    "@anthropic-ai/sdk": "^0.67.0",
     "@formfillai/shared": "workspace:*",
     "@mendable/firecrawl-js": "^4.4.1",
     "ai": "^5.0.60",
