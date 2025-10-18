@@ -1,11 +1,11 @@
 "use client";
 
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { parseConversationSchema, type ConversationSchema } from "@formfillai/shared";
 
-import { TypingIndicator } from "./typing-indicator";
 import { PromptSuggestions } from "./prompt-suggestions";
+import { TypingIndicator } from "./typing-indicator";
 
 type ConversationStatus = "in_progress" | "completed";
 
@@ -115,6 +115,8 @@ export function ChatPanel({
     return `message-${messageCounter.current}`;
   };
 
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+
   const onSchemaLoadRef = useRef(onSchemaLoad);
   useEffect(() => {
     onSchemaLoadRef.current = onSchemaLoad;
@@ -200,6 +202,16 @@ export function ChatPanel({
       onExposeEditHandler(handleFieldEdit);
     }
   }, [onExposeEditHandler, handleFieldEdit]);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [messages, isPending, error]);
 
   useEffect(() => {
     let cancelled = false;
@@ -553,7 +565,7 @@ export function ChatPanel({
   };
 
   return (
-    <section className="flex h-full flex-col gap-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="flex h-full flex-col gap-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm overflow-y-auto max-h-[calc(100vh-100px)]">
       <header>
         <h2 className="text-lg font-semibold">Conversation Preview</h2>
         <p className="text-sm text-slate-500">
@@ -585,7 +597,10 @@ export function ChatPanel({
         ) : null}
       </div>
 
-      <div className="flex-1 overflow-y-auto rounded-md border border-slate-100 bg-slate-50 p-4">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto rounded-md border border-slate-100 bg-slate-50 p-4"
+      >
         {isInitialising ? (
           <p className="text-sm text-slate-500">Loading conversation…</p>
         ) : (

@@ -1,7 +1,7 @@
 "use client";
 
 import { type ConversationSchema } from "@formfillai/shared";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface FormDisplayProps {
   schema: ConversationSchema | null;
@@ -13,6 +13,43 @@ interface FormDisplayProps {
 export function FormDisplay({ schema, collectedData, onFieldEdit, isPending }: FormDisplayProps) {
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const fieldsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to show newest completed field if it's not visible
+  useEffect(() => {
+    if (!fieldsContainerRef.current || !schema) return;
+
+    // Find the last field that has a value
+    const lastCompletedFieldIndex = schema.fields
+      .map((field, index) => ({ field, index }))
+      .filter(({ field }) => field.id in collectedData)
+      .pop()?.index;
+
+    if (lastCompletedFieldIndex === undefined) return;
+
+    // Check if the last completed field is visible
+    const container = fieldsContainerRef.current;
+    const fieldElements = container.querySelectorAll("[data-field-id]");
+    const lastCompletedFieldElement = fieldElements[lastCompletedFieldIndex] as HTMLElement;
+
+    if (!lastCompletedFieldElement) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const fieldRect = lastCompletedFieldElement.getBoundingClientRect();
+
+    // Check if the field is fully visible in the container
+    const isFieldVisible =
+      fieldRect.top >= containerRect.top && fieldRect.bottom <= containerRect.bottom;
+
+    // If not visible, scroll to show the newest completed field
+    if (!isFieldVisible) {
+      lastCompletedFieldElement.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+        inline: "nearest",
+      });
+    }
+  }, [collectedData, schema]);
 
   if (!schema) {
     return (
@@ -53,6 +90,7 @@ export function FormDisplay({ schema, collectedData, onFieldEdit, isPending }: F
     return (
       <div
         key={field.id}
+        data-field-id={field.id}
         className={`rounded-md border p-4 transition-all ${
           hasValue ? "border-green-200 bg-green-50" : "border-slate-200 bg-slate-50"
         }`}
@@ -163,7 +201,7 @@ export function FormDisplay({ schema, collectedData, onFieldEdit, isPending }: F
   };
 
   return (
-    <section className="flex h-full flex-col gap-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="flex h-full flex-col gap-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm overflow-y-auto max-h-[calc(100vh-100px)]">
       <header>
         <h2 className="text-lg font-semibold">Form Fields</h2>
         <p className="text-sm text-slate-500">
@@ -171,7 +209,9 @@ export function FormDisplay({ schema, collectedData, onFieldEdit, isPending }: F
         </p>
       </header>
 
-      <div className="flex-1 overflow-y-auto space-y-3">{schema.fields.map(renderField)}</div>
+      <div ref={fieldsContainerRef} className="flex-1 overflow-y-auto space-y-3">
+        {schema.fields.map(renderField)}
+      </div>
     </section>
   );
 }
