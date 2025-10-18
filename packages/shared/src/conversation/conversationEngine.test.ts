@@ -1,6 +1,10 @@
-import type { ConversationSchema, ConversationSession } from "../schema/conversationSchema";
+import type { ConversationSchema } from "../schema/conversationSchema";
 import { parseConversationSchema } from "../schema/conversationSchema";
-import { ConversationEngine, type SessionStore } from "./conversationEngine";
+import {
+  ConversationEngine,
+  type ConversationSession,
+  type SessionStore,
+} from "./conversationEngine";
 
 const baseSchema = parseConversationSchema({
   id: "loan-intake",

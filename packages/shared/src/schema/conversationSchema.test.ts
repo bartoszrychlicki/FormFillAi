@@ -72,11 +72,10 @@ describe("parseConversationSchema", () => {
           {
             id: "bad",
             text: "??",
-            // @ts-expect-error - intentional invalid input for runtime validation
             type: "not-real",
           },
         ],
-      }),
+      } as unknown),
     ).toThrow('Field "bad" has invalid type "not-real": expected one of text, number, email, select.');
   });
 
