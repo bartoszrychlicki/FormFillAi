@@ -15,8 +15,8 @@ jest.mock("@ai-sdk/openai", () => ({
 const mockedGenerateText = generateText as jest.MockedFunction<typeof generateText>;
 const mockedOpenAI = openai as jest.MockedFunction<typeof openai>;
 
-const acceptMessage = (message: string) => ({
-  text: JSON.stringify({ status: "accepted", message }),
+const acceptMessage = (message: string, tail = "") => ({
+  text: `${JSON.stringify({ status: "accepted", message })}${tail}`,
 });
 
 const retryMessage = (message: string) => ({
@@ -230,11 +230,14 @@ describe("POST /api/chat", () => {
     const nextField = schema.fields[i + 1] ?? null;
 
     if (nextField) {
+      const tail = nextField.type === "select" ? "\nSure thing!" : "";
       mockedGenerateText.mockResolvedValueOnce(
-        acceptMessage(`Thanks for that update.\n${nextField.text}`),
+        acceptMessage(`Thanks for that update.\n${nextField.text}`, tail),
       );
     } else {
-      mockedGenerateText.mockResolvedValueOnce(acceptMessage(schema.completionMessage));
+      mockedGenerateText.mockResolvedValueOnce(
+        acceptMessage(schema.completionMessage, "\nWe'll follow up shortly."),
+      );
     }
 
     const response = await POST(

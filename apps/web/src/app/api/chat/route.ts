@@ -380,17 +380,9 @@ const parseFollowUpResponse = (rawText: string): FollowUpResult | null => {
     processed = fenceIndex >= 0 ? withoutFence.slice(0, fenceIndex) : withoutFence;
   }
 
-  const direct = safeParseFollowUpJson(processed);
-  if (direct) {
-    return direct;
-  }
-
   const extracted = extractFirstJsonObject(processed);
   if (extracted) {
-    const fallback = safeParseFollowUpJson(extracted);
-    if (fallback) {
-      return fallback;
-    }
+    return safeParseFollowUpJson(extracted);
   }
 
   return null;
@@ -398,7 +390,12 @@ const parseFollowUpResponse = (rawText: string): FollowUpResult | null => {
 
 const safeParseFollowUpJson = (input: string): FollowUpResult | null => {
   try {
-    const json = JSON.parse(input);
+    const candidate = input.trimEnd();
+    if (!candidate.endsWith("}")) {
+      return null;
+    }
+
+    const json = JSON.parse(candidate);
     if (!json || typeof json !== "object") {
       return null;
     }
