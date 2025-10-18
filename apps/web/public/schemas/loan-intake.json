@@ -1,0 +1,58 @@
+{
+  "id": "loan-intake",
+  "welcomeMessage": "Hi there! I'm here to guide you through the loan intake.",
+  "completionMessage": "Perfect, thanks! We'll follow up shortly with next steps.",
+  "webhookUrl": "https://example.com/webhooks/loan-intake",
+  "saveOnTheGo": false,
+  "fields": [
+    {
+      "id": "full-name",
+      "text": "What's your full legal name?",
+      "type": "text",
+      "validation": {
+        "required": true,
+        "min_words": 2,
+        "failure_message": "Please provide your full legal name, including both first and last name."
+      },
+      "ai_prompt": "Only accept answers that include at least a first and last name. If the reply is too short or a single word, ask for the complete legal name before moving on."
+    },
+    {
+      "id": "contact-email",
+      "text": "Which email address should we use for updates?",
+      "type": "email",
+      "validation": {
+        "required": true,
+        "failure_message": "That doesn't look like a valid email. Please reply with an address such as name@example.com."
+      },
+      "ai_prompt": "Confirm the response is a real email address containing '@' and a domain. If it is missing parts or formatted incorrectly, explain what is wrong and ask them to try again before you proceed."
+    },
+    {
+      "id": "requested-amount",
+      "text": "How much funding are you looking for?",
+      "type": "number",
+      "validation": {
+        "required": true,
+        "failure_message": "Please share the amount using numbers (you can optionally use k/m/b for thousands, millions, or billions)."
+      },
+      "ai_prompt": "Translate shorthand like 200k or 1.5m into a numeric USD amount. If the user mentions a different currency or gives a non-numeric description, confirm the USD amount before asking the next question."
+    },
+    {
+      "id": "loan-purpose",
+      "text": "What will you use the funds for? Choose one of the options below.",
+      "type": "select",
+      "options": [
+        "Home improvements",
+        "Debt consolidation",
+        "Vehicle purchase",
+        "Education expenses",
+        "Business investment",
+        "Other"
+      ],
+      "validation": {
+        "required": true,
+        "failure_message": "Please choose one of the listed purposes so we can continue."
+      },
+      "ai_prompt": "If the response does not match one of the provided options, ask the user to pick from the list. If they attempt to revise an earlier answer instead, clarify which question they want to update before moving forward."
+    }
+  ]
+}

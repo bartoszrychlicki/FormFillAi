@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@formfillai/tsconfig/base",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "allowJs": true,
+    "moduleResolution": "Bundler",
+    "module": "ESNext",
+    "noEmit": true
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"],
+  "exclude": ["node_modules"]
+}

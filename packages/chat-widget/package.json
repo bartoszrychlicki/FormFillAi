@@ -1,0 +1,62 @@
+{
+  "name": "@formfillai/chat-widget",
+  "version": "0.0.1",
+  "description": "Reusable chat widget for FormFillAI conversations.",
+  "keywords": [
+    "form",
+    "chat",
+    "widget",
+    "react",
+    "formfillai"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./styles.css": {
+      "default": "./dist/index.css"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "./dist/index.css"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "test": "jest --config ./jest.config.ts --runInBand"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "dependencies": {
+    "@formfillai/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@formfillai/eslint-config": "workspace:*",
+    "@formfillai/tsconfig": "workspace:*",
+    "@testing-library/react": "^16.3.0",
+    "@types/jest": "^30.0.0",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.4",
+    "tsup": "^8.3.6",
+    "typescript": "^5.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "extends": "@formfillai/tsconfig/library",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules"]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@formfillai/tsconfig",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    "./base": "./base.json",
+    "./next": "./next.json",
+    "./library": "./library.json"
+  }
+}

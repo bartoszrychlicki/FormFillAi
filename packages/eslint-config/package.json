@@ -1,0 +1,19 @@
+{
+  "name": "@formfillai/eslint-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "flat.mjs",
+  "exports": {
+    ".": "./flat.mjs",
+    "./library": "./library.mjs"
+  },
+  "dependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.14.0",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@typescript-eslint/parser": "^8.45.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0"
+  }
+}

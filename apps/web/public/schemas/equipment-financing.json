@@ -1,0 +1,56 @@
+{
+  "id": "equipment-financing",
+  "welcomeMessage": "Welcome! Let's learn more about your equipment financing request.",
+  "completionMessage": "Thanks for the details — we'll follow up with a tailored financing offer.",
+  "webhookUrl": "https://example.com/webhooks/equipment-financing",
+  "saveOnTheGo": false,
+  "fields": [
+    {
+      "id": "business-name",
+      "text": "What's the legal name of your business?",
+      "type": "text",
+      "validation": {
+        "required": true,
+        "failure_message": "Please share the registered business name so we can verify your application."
+      },
+      "ai_prompt": "Ensure the answer includes the full registered business name. If the user provides only a first name or nickname, ask them to clarify."
+    },
+    {
+      "id": "contact-phone",
+      "text": "What's the best phone number to reach you?",
+      "type": "text",
+      "validation": {
+        "required": true,
+        "failure_message": "Please enter a phone number we can call (digits only or with separators)."
+      },
+      "ai_prompt": "Accept phone numbers with digits, spaces, parentheses, or dashes. If it looks incomplete, ask for the full number including area code."
+    },
+    {
+      "id": "equipment-type",
+      "text": "What type of equipment are you looking to finance?",
+      "type": "select",
+      "options": [
+        "Construction machinery",
+        "Medical devices",
+        "Restaurant equipment",
+        "Technology hardware",
+        "Other"
+      ],
+      "validation": {
+        "required": true,
+        "failure_message": "Please choose one of the equipment categories so we can tailor financing terms."
+      },
+      "ai_prompt": "If the answer doesn't match one of the categories, ask the user to pick from the list while allowing them to clarify under 'Other'."
+    },
+    {
+      "id": "financing-amount",
+      "text": "Approximately how much financing do you need?",
+      "type": "number",
+      "validation": {
+        "required": true,
+        "failure_message": "Please provide the estimated financing amount as a number."
+      },
+      "ai_prompt": "Convert shorthand like 50k into 50000. If the user gives a range, confirm the upper bound before moving ahead."
+    }
+  ]
+}
