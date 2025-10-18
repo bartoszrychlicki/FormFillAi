@@ -9,6 +9,8 @@ export interface ConversationSession {
   currentFieldId: string | null;
   status: ConversationStatus;
   collectedData: Record<string, unknown>;
+  partialAnswers: Record<string, string[]>;
+  missingAspects: Record<string, string[]>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,6 +73,8 @@ export class ConversationEngine {
       currentFieldId: firstField.id,
       status: "in_progress",
       collectedData: {},
+      partialAnswers: {},
+      missingAspects: {},
       createdAt: now,
       updatedAt: now,
     };
@@ -144,6 +148,24 @@ export class ConversationEngine {
     return session ? cloneSession(session) : null;
   }
 
+  async updateSession(
+    updates: Partial<ConversationSession> & { sessionId: string },
+  ): Promise<void> {
+    const session = await this.resolveSession(updates.sessionId);
+    if (!session) {
+      throw new Error(`Session missing: ${updates.sessionId}`);
+    }
+
+    Object.assign(session, updates);
+    session.updatedAt = this.clock();
+
+    this.sessionCache.set(session.sessionId, session);
+
+    if (this.store) {
+      await this.store.update(cloneSession(session));
+    }
+  }
+
   async clearSession(sessionId: string): Promise<void> {
     this.sessionCache.delete(sessionId);
     if (this.store) {
@@ -197,16 +219,17 @@ export class ConversationEngine {
     throw new Error(`Schema not registered for id: ${schemaId}`);
   }
 
-  private getCurrentField(schema: ConversationSchema, session: ConversationSession): ConversationField {
+  private getCurrentField(
+    schema: ConversationSchema,
+    session: ConversationSession,
+  ): ConversationField {
     if (!session.currentFieldId) {
       throw new Error("Conversation already completed.");
     }
 
     const field = schema.fields.find((item) => item.id === session.currentFieldId);
     if (!field) {
-      throw new Error(
-        `Field "${session.currentFieldId}" is not present in schema "${schema.id}".`,
-      );
+      throw new Error(`Field "${session.currentFieldId}" is not present in schema "${schema.id}".`);
     }
 
     return field;
@@ -240,6 +263,12 @@ const cloneSession = (session: ConversationSession): ConversationSession => ({
   currentFieldId: session.currentFieldId,
   status: session.status,
   collectedData: { ...session.collectedData },
+  partialAnswers: Object.fromEntries(
+    Object.entries(session.partialAnswers).map(([key, value]) => [key, [...value]]),
+  ),
+  missingAspects: Object.fromEntries(
+    Object.entries(session.missingAspects).map(([key, value]) => [key, [...value]]),
+  ),
   createdAt: new Date(session.createdAt.getTime()),
   updatedAt: new Date(session.updatedAt.getTime()),
 });

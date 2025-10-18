@@ -17,6 +17,7 @@ export interface ConversationField {
   options?: string[];
   validation: FieldValidation;
   aiPrompt?: string;
+  expectedAspects?: string[];
 }
 
 export interface ConversationSchema {
@@ -57,6 +58,9 @@ const rawFieldSchema = z
       .trim()
       .min(1, "Field ai_prompt cannot be empty when provided.")
       .optional(),
+    expected_aspects: z
+      .array(z.string().trim().min(1, "Expected aspects must be non-empty strings."))
+      .optional(),
     validation: fieldValidationSchema,
   })
   .strict()
@@ -92,9 +96,7 @@ const conversationSchemaWithoutTransforms = z
     completionMessage: z.string().min(1, "Completion message cannot be empty."),
     webhookUrl: z.string().min(1, "Webhook URL is required."),
     saveOnTheGo: z.boolean().optional(),
-    fields: z
-      .array(rawFieldSchema)
-      .min(1, "Conversation schema must declare at least one field."),
+    fields: z.array(rawFieldSchema).min(1, "Conversation schema must declare at least one field."),
   })
   .strict();
 
@@ -112,6 +114,7 @@ const normaliseField = (field: z.infer<typeof rawFieldSchema>): ConversationFiel
 
   const sanitisedOptions = field.options?.map((value) => value.trim());
   const aiPrompt = field.ai_prompt?.trim();
+  const expectedAspects = field.expected_aspects?.map((value) => value.trim()).filter(Boolean);
 
   return {
     id: field.id,
@@ -120,6 +123,7 @@ const normaliseField = (field: z.infer<typeof rawFieldSchema>): ConversationFiel
     options: typedField === "select" ? sanitisedOptions : undefined,
     validation,
     aiPrompt: aiPrompt && aiPrompt.length > 0 ? aiPrompt : undefined,
+    expectedAspects: expectedAspects && expectedAspects.length > 0 ? expectedAspects : undefined,
   };
 };
 
@@ -174,7 +178,10 @@ const rawFieldSchemaForGeneration = z
     id: z
       .string()
       .min(1, "Field id cannot be empty.")
-      .regex(/^[a-z0-9-]+$/, "Field id must be kebab-case (lowercase letters, numbers, hyphens only)."),
+      .regex(
+        /^[a-z0-9-]+$/,
+        "Field id must be kebab-case (lowercase letters, numbers, hyphens only).",
+      ),
     text: z.string().min(5, "Field text must be at least 5 characters."),
     type: z.string().min(1, "Field type cannot be empty."),
     options: z
@@ -184,6 +191,9 @@ const rawFieldSchemaForGeneration = z
       .string()
       .trim()
       .min(10, "Field ai_prompt should be descriptive (at least 10 characters).")
+      .optional(),
+    expected_aspects: z
+      .array(z.string().trim().min(1, "Expected aspects must be non-empty strings."))
       .optional(),
     validation: fieldValidationSchema,
   })
