@@ -8,6 +8,14 @@ import { FormDisplay } from "@/components/chat/FormDisplay";
 import { ImportSchemaDialog } from "@/components/demo/ImportSchemaDialog";
 import type { ConversationSchema } from "@formfillai/shared";
 
+const encodeBase64 = (str: string): string => {
+  return btoa(
+    encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_match, p1) => {
+      return String.fromCharCode(parseInt(p1, 16));
+    }),
+  );
+};
+
 interface ChatPlaygroundProps {
   schemas: SchemaPreview[];
 }
@@ -37,7 +45,8 @@ export function ChatPlayground({ schemas }: ChatPlaygroundProps) {
   );
 
   const handleUseSchema = (schema: ConversationSchema, schemaJson: string) => {
-    const dataUrl = `data:application/json;base64,${btoa(schemaJson)}`;
+    const base64 = encodeBase64(schemaJson);
+    const dataUrl = `data:application/json;base64,${base64}`;
     const preview: SchemaPreview = {
       id: schema.id,
       schemaUrl: dataUrl,
@@ -125,7 +134,7 @@ export function ChatPlayground({ schemas }: ChatPlaygroundProps) {
             onClick={() => setIsImportDialogOpen(true)}
             className="inline-flex items-center justify-center rounded-md border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
           >
-            Import from Google Forms
+            Import Schema
           </button>
           <a
             href={selectedSchema.schemaUrl}

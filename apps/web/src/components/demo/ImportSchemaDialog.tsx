@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { parseConversationSchema, type ConversationSchema } from "@formfillai/shared";
 
 interface ImportSchemaDialogProps {
@@ -11,9 +11,12 @@ interface ImportSchemaDialogProps {
 
 type Tab = "raw" | "preview";
 type ValidationState = "valid" | "invalid" | "neutral";
+type ImportMode = "url" | "pdf";
 
 export function ImportSchemaDialog({ isOpen, onClose, onUseSchema }: ImportSchemaDialogProps) {
+  const [importMode, setImportMode] = useState<ImportMode>("url");
   const [url, setUrl] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [schemaJson, setSchemaJson] = useState<string | null>(null);
@@ -21,6 +24,7 @@ export function ImportSchemaDialog({ isOpen, onClose, onUseSchema }: ImportSchem
   const [validationState, setValidationState] = useState<ValidationState>("neutral");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("raw");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const validateSchema = (jsonString: string) => {
     try {
@@ -36,7 +40,42 @@ export function ImportSchemaDialog({ isOpen, onClose, onUseSchema }: ImportSchem
     }
   };
 
-  const handleImport = async () => {
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.includes("pdf")) {
+      setError("Please select a PDF file");
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError("File size must be less than 10MB");
+      return;
+    }
+
+    setSelectedFile(file);
+    setError(null);
+  };
+
+  const handleFileClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const convertFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result as string;
+        const base64Data = base64.split(",")[1];
+        resolve(base64Data);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImportUrl = async () => {
     if (!url.trim()) {
       setError("Please enter a valid URL");
       return;
@@ -73,6 +112,59 @@ export function ImportSchemaDialog({ isOpen, onClose, onUseSchema }: ImportSchem
     }
   };
 
+  const handleImportPdf = async () => {
+    if (!selectedFile) {
+      setError("Please select a PDF file");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSchemaJson(null);
+    setParsedSchema(null);
+    setValidationState("neutral");
+
+    try {
+      const base64Data = await convertFileToBase64(selectedFile);
+
+      const response = await fetch("/api/import-pdf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          file: {
+            name: selectedFile.name,
+            type: selectedFile.type,
+            base64Data,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to import PDF");
+      }
+
+      const data = await response.json();
+      const formatted = JSON.stringify(data.schema, null, 2);
+      setSchemaJson(formatted);
+      validateSchema(formatted);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An unknown error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImport = () => {
+    if (importMode === "url") {
+      return handleImportUrl();
+    } else {
+      return handleImportPdf();
+    }
+  };
+
   const handleSchemaChange = (value: string) => {
     setSchemaJson(value);
     setValidationState("neutral");
@@ -98,7 +190,9 @@ export function ImportSchemaDialog({ isOpen, onClose, onUseSchema }: ImportSchem
   };
 
   const handleClose = () => {
+    setImportMode("url");
     setUrl("");
+    setSelectedFile(null);
     setError(null);
     setSchemaJson(null);
     setParsedSchema(null);
@@ -116,11 +210,13 @@ export function ImportSchemaDialog({ isOpen, onClose, onUseSchema }: ImportSchem
     return "border-slate-300";
   };
 
+  const canImport = importMode === "url" ? url.trim() : selectedFile !== null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
       <div className="w-full max-w-3xl rounded-lg bg-white p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-slate-900">Import Form from URL</h2>
+          <h2 className="text-xl font-semibold text-slate-900">Import Form Schema</h2>
           <button
             onClick={handleClose}
             className="text-slate-400 hover:text-slate-600"
@@ -133,20 +229,85 @@ export function ImportSchemaDialog({ isOpen, onClose, onUseSchema }: ImportSchem
         </div>
 
         <div className="space-y-4">
-          <div>
-            <label htmlFor="form-url" className="block text-sm font-medium text-slate-700">
-              Google Forms URL
-            </label>
-            <input
-              id="form-url"
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://docs.google.com/forms/d/..."
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
-              disabled={loading}
-            />
-          </div>
+          {!schemaJson && (
+            <div className="flex gap-2 rounded-lg bg-slate-100 p-1">
+              <button
+                onClick={() => setImportMode("url")}
+                className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition ${
+                  importMode === "url"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+                disabled={loading}
+              >
+                Import from URL
+              </button>
+              <button
+                onClick={() => setImportMode("pdf")}
+                className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition ${
+                  importMode === "pdf"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+                disabled={loading}
+              >
+                Import from PDF
+              </button>
+            </div>
+          )}
+
+          {importMode === "url" && !schemaJson && (
+            <div>
+              <label htmlFor="form-url" className="block text-sm font-medium text-slate-700">
+                Google Forms URL
+              </label>
+              <input
+                id="form-url"
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://docs.google.com/forms/d/..."
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                disabled={loading}
+              />
+            </div>
+          )}
+
+          {importMode === "pdf" && !schemaJson && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700">PDF Form File</label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={handleFileSelect}
+                className="hidden"
+                disabled={loading}
+              />
+              <div
+                onClick={handleFileClick}
+                className="mt-1 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-8 transition hover:border-sky-500 hover:bg-sky-50"
+              >
+                <svg
+                  className="h-12 w-12 text-slate-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                  />
+                </svg>
+                <p className="mt-2 text-sm font-medium text-slate-700">
+                  {selectedFile ? selectedFile.name : "Click to select PDF file"}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">PDF files up to 10MB</p>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
@@ -157,10 +318,10 @@ export function ImportSchemaDialog({ isOpen, onClose, onUseSchema }: ImportSchem
           {!schemaJson && (
             <button
               onClick={handleImport}
-              disabled={loading || !url.trim()}
+              disabled={loading || !canImport}
               className="w-full rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? "Importing..." : "Import Form"}
+              {loading ? "Importing..." : importMode === "url" ? "Import from URL" : "Import from PDF"}
             </button>
           )}
 
