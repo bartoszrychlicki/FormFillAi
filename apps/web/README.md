@@ -19,7 +19,7 @@ The app boots on http://localhost:3000. The landing page lists every JSON schema
 
 ## Environment
 
-Set `OPENAI_API_KEY` in `.env.local` to allow the Vercel AI SDK to call live models. `OPENAI_MODEL` can override the default (`gpt-4o-mini`) when needed. Tests mock the SDK, so credentials are optional for CI.
+Set `ANTHROPIC_API_KEY` in `.env.local` to allow the Vercel AI SDK to call live models. `ANTHROPIC_MODEL` can override the default (`claude-3-5-sonnet-20241022`) when needed. Tests mock the SDK, so credentials are optional for CI.
 
 ## Structure
 

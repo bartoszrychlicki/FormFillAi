@@ -11,7 +11,7 @@
     "test": "jest --config ./jest.config.ts --runInBand"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^2.0.42",
+    "@ai-sdk/anthropic": "^1.0.10",
     "@formfillai/shared": "workspace:*",
     "ai": "^5.0.60",
     "next": "15.5.4",

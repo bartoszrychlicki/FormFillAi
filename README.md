@@ -21,7 +21,7 @@ Visit http://localhost:3000 to interact with the conversation demo. Schemas are 
 
 ## Environment
 
-The chat endpoint relies on OpenAI-compatible credentials via the Vercel AI SDK. Set `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) in `apps/web/.env.local` before hitting live models. Tests mock the AI SDK and webhook calls, so no secrets are required locally.
+The chat endpoint relies on Anthropic Claude via the Vercel AI SDK. Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`) in `apps/web/.env.local` before hitting live models. Tests mock the AI SDK and webhook calls, so no secrets are required locally.
 
 ## Repository Layout
 
