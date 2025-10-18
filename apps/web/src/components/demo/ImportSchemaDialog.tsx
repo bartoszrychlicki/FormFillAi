@@ -1,17 +1,40 @@
 "use client";
 
 import { useState } from "react";
+import { parseConversationSchema, type ConversationSchema } from "@formfillai/shared";
 
 interface ImportSchemaDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  onUseSchema: (schema: ConversationSchema, schemaJson: string) => void;
 }
 
-export function ImportSchemaDialog({ isOpen, onClose }: ImportSchemaDialogProps) {
+type Tab = "raw" | "preview";
+type ValidationState = "valid" | "invalid" | "neutral";
+
+export function ImportSchemaDialog({ isOpen, onClose, onUseSchema }: ImportSchemaDialogProps) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [schema, setSchema] = useState<string | null>(null);
+  const [schemaJson, setSchemaJson] = useState<string | null>(null);
+  const [parsedSchema, setParsedSchema] = useState<ConversationSchema | null>(null);
+  const [validationState, setValidationState] = useState<ValidationState>("neutral");
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("raw");
+
+  const validateSchema = (jsonString: string) => {
+    try {
+      const parsed = JSON.parse(jsonString);
+      const validated = parseConversationSchema(parsed);
+      setParsedSchema(validated);
+      setValidationState("valid");
+      setValidationError(null);
+    } catch (err) {
+      setParsedSchema(null);
+      setValidationState("invalid");
+      setValidationError(err instanceof Error ? err.message : "Invalid schema format");
+    }
+  };
 
   const handleImport = async () => {
     if (!url.trim()) {
@@ -21,7 +44,9 @@ export function ImportSchemaDialog({ isOpen, onClose }: ImportSchemaDialogProps)
 
     setLoading(true);
     setError(null);
-    setSchema(null);
+    setSchemaJson(null);
+    setParsedSchema(null);
+    setValidationState("neutral");
 
     try {
       const response = await fetch("/api/import-form", {
@@ -38,7 +63,9 @@ export function ImportSchemaDialog({ isOpen, onClose }: ImportSchemaDialogProps)
       }
 
       const data = await response.json();
-      setSchema(JSON.stringify(data.schema, null, 2));
+      const formatted = JSON.stringify(data.schema, null, 2);
+      setSchemaJson(formatted);
+      validateSchema(formatted);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unknown error occurred");
     } finally {
@@ -46,20 +73,48 @@ export function ImportSchemaDialog({ isOpen, onClose }: ImportSchemaDialogProps)
     }
   };
 
+  const handleSchemaChange = (value: string) => {
+    setSchemaJson(value);
+    setValidationState("neutral");
+  };
+
+  const handleSchemaBlur = () => {
+    if (schemaJson) {
+      validateSchema(schemaJson);
+    }
+  };
+
   const handleCopyToClipboard = async () => {
-    if (schema) {
-      await navigator.clipboard.writeText(schema);
+    if (schemaJson) {
+      await navigator.clipboard.writeText(schemaJson);
+    }
+  };
+
+  const handleUseSchema = () => {
+    if (parsedSchema && schemaJson) {
+      onUseSchema(parsedSchema, schemaJson);
+      handleClose();
     }
   };
 
   const handleClose = () => {
     setUrl("");
     setError(null);
-    setSchema(null);
+    setSchemaJson(null);
+    setParsedSchema(null);
+    setValidationState("neutral");
+    setValidationError(null);
+    setActiveTab("raw");
     onClose();
   };
 
   if (!isOpen) return null;
+
+  const getBorderColor = () => {
+    if (validationState === "valid") return "border-green-500";
+    if (validationState === "invalid") return "border-orange-500";
+    return "border-slate-300";
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
@@ -99,7 +154,7 @@ export function ImportSchemaDialog({ isOpen, onClose }: ImportSchemaDialogProps)
             </div>
           )}
 
-          {!schema && (
+          {!schemaJson && (
             <button
               onClick={handleImport}
               disabled={loading || !url.trim()}
@@ -109,29 +164,110 @@ export function ImportSchemaDialog({ isOpen, onClose }: ImportSchemaDialogProps)
             </button>
           )}
 
-          {schema && (
+          {schemaJson && parsedSchema && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label htmlFor="schema-output" className="block text-sm font-medium text-slate-700">
-                  Generated Schema
-                </label>
+              <div className="rounded-md bg-slate-50 p-3">
+                <div className="text-sm font-medium text-slate-900">{parsedSchema.id}</div>
+                <div className="mt-1 text-xs text-slate-600">{parsedSchema.welcomeMessage}</div>
+              </div>
+
+              <div className="flex gap-2 border-b border-slate-200">
                 <button
-                  onClick={handleCopyToClipboard}
-                  className="text-sm text-sky-600 hover:text-sky-700"
+                  onClick={() => setActiveTab("raw")}
+                  className={`px-4 py-2 text-sm font-medium transition ${
+                    activeTab === "raw"
+                      ? "border-b-2 border-sky-600 text-sky-600"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
                 >
-                  Copy to Clipboard
+                  Raw
+                </button>
+                <button
+                  onClick={() => setActiveTab("preview")}
+                  className={`px-4 py-2 text-sm font-medium transition ${
+                    activeTab === "preview"
+                      ? "border-b-2 border-sky-600 text-sky-600"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Preview
                 </button>
               </div>
-              <textarea
-                id="schema-output"
-                value={schema}
-                readOnly
-                rows={20}
-                className="w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-xs focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
-              />
-              <div className="text-xs text-slate-500">
-                Copy this schema and save it as a JSON file in <code className="rounded bg-slate-100 px-1 py-0.5">public/schemas/</code> to use it.
-              </div>
+
+              {activeTab === "raw" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="schema-output" className="block text-sm font-medium text-slate-700">
+                      Schema JSON
+                    </label>
+                    <button
+                      onClick={handleCopyToClipboard}
+                      className="text-sm text-sky-600 hover:text-sky-700"
+                    >
+                      Copy to Clipboard
+                    </button>
+                  </div>
+                  <textarea
+                    id="schema-output"
+                    value={schemaJson}
+                    onChange={(e) => handleSchemaChange(e.target.value)}
+                    onBlur={handleSchemaBlur}
+                    rows={20}
+                    className={`w-full rounded-md border ${getBorderColor()} bg-white px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-sky-200`}
+                  />
+                  {validationState === "invalid" && validationError && (
+                    <div className="text-xs text-orange-600">
+                      {validationError}
+                    </div>
+                  )}
+                  {validationState === "valid" && (
+                    <div className="text-xs text-green-600">
+                      Schema is valid
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === "preview" && (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-slate-700">
+                    Fields ({parsedSchema.fields.length})
+                  </div>
+                  <div className="max-h-96 space-y-2 overflow-y-auto rounded-md border border-slate-200 p-3">
+                    {parsedSchema.fields.map((field, index) => (
+                      <div
+                        key={field.id}
+                        className="flex items-start gap-3 rounded-md border border-slate-100 bg-slate-50 p-3"
+                      >
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-xs font-medium text-sky-700">
+                          {index + 1}
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-slate-900">{field.text}</div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700">
+                              {field.type}
+                            </span>
+                            {field.validation.required && (
+                              <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                                required
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={handleUseSchema}
+                disabled={validationState !== "valid"}
+                className="w-full rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Use Schema
+              </button>
             </div>
           )}
 

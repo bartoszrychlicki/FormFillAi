@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import type { SchemaPreview } from "@/lib/conversation/schema-catalog";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { ImportSchemaDialog } from "@/components/demo/ImportSchemaDialog";
+import type { ConversationSchema } from "@formfillai/shared";
 
 interface ChatPlaygroundProps {
   schemas: SchemaPreview[];
@@ -13,11 +14,41 @@ interface ChatPlaygroundProps {
 export function ChatPlayground({ schemas }: ChatPlaygroundProps) {
   const [selectedId, setSelectedId] = useState(() => schemas[0]?.id ?? "");
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importedSchema, setImportedSchema] = useState<SchemaPreview | null>(null);
+
+  const allSchemas = useMemo(() => {
+    if (importedSchema) {
+      return [importedSchema, ...schemas];
+    }
+    return schemas;
+  }, [schemas, importedSchema]);
 
   const selectedSchema = useMemo(
-    () => schemas.find((schema) => schema.id === selectedId) ?? schemas[0] ?? null,
-    [schemas, selectedId],
+    () => allSchemas.find((schema) => schema.id === selectedId) ?? allSchemas[0] ?? null,
+    [allSchemas, selectedId],
   );
+
+  const handleUseSchema = (schema: ConversationSchema, schemaJson: string) => {
+    const dataUrl = `data:application/json;base64,${btoa(schemaJson)}`;
+    const preview: SchemaPreview = {
+      id: schema.id,
+      schemaUrl: dataUrl,
+      welcomeMessage: schema.welcomeMessage,
+      completionMessage: schema.completionMessage,
+      webhookUrl: schema.webhookUrl.toString(),
+      fieldCount: schema.fields.length,
+      fields: schema.fields.map((field) => ({
+        id: field.id,
+        text: field.text,
+        type: field.type,
+        required: field.validation.required,
+        options: field.options,
+      })),
+    };
+
+    setImportedSchema(preview);
+    setSelectedId(schema.id);
+  };
 
   if (!selectedSchema) {
     return (
@@ -45,9 +76,10 @@ export function ChatPlayground({ schemas }: ChatPlaygroundProps) {
             value={selectedSchema.id}
             onChange={onSelectChange}
           >
-            {schemas.map((schema) => (
+            {allSchemas.map((schema) => (
               <option key={schema.id} value={schema.id}>
                 {schema.id}
+                {schema === importedSchema ? " (imported)" : ""}
               </option>
             ))}
           </select>
@@ -73,7 +105,11 @@ export function ChatPlayground({ schemas }: ChatPlaygroundProps) {
 
       <ChatPanel schemaUrl={selectedSchema.schemaUrl} title={`Loaded from ${selectedSchema.schemaUrl}`} />
 
-      <ImportSchemaDialog isOpen={isImportDialogOpen} onClose={() => setIsImportDialogOpen(false)} />
+      <ImportSchemaDialog
+        isOpen={isImportDialogOpen}
+        onClose={() => setIsImportDialogOpen(false)}
+        onUseSchema={handleUseSchema}
+      />
     </div>
   );
 }
