@@ -1,5 +1,6 @@
 export {
   conversationSchema,
+  conversationSchemaForGeneration,
   parseConversationSchema,
   fieldTypes,
 } from "./schema/conversationSchema";

@@ -13,6 +13,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.33",
     "@formfillai/shared": "workspace:*",
+    "@mendable/firecrawl-js": "^4.4.1",
     "ai": "^5.0.60",
     "next": "15.5.4",
     "react": "19.1.0",

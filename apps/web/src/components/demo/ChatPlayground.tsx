@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import type { SchemaPreview } from "@/lib/conversation/schema-catalog";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { ImportSchemaDialog } from "@/components/demo/ImportSchemaDialog";
 
 interface ChatPlaygroundProps {
   schemas: SchemaPreview[];
@@ -11,6 +12,7 @@ interface ChatPlaygroundProps {
 
 export function ChatPlayground({ schemas }: ChatPlaygroundProps) {
   const [selectedId, setSelectedId] = useState(() => schemas[0]?.id ?? "");
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
 
   const selectedSchema = useMemo(
     () => schemas.find((schema) => schema.id === selectedId) ?? schemas[0] ?? null,
@@ -51,17 +53,27 @@ export function ChatPlayground({ schemas }: ChatPlaygroundProps) {
           </select>
         </div>
 
-        <a
-          href={selectedSchema.schemaUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center justify-center rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
-        >
-          Open JSON file
-        </a>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setIsImportDialogOpen(true)}
+            className="inline-flex items-center justify-center rounded-md border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
+          >
+            Import from Google Forms
+          </button>
+          <a
+            href={selectedSchema.schemaUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+          >
+            Open JSON file
+          </a>
+        </div>
       </div>
 
       <ChatPanel schemaUrl={selectedSchema.schemaUrl} title={`Loaded from ${selectedSchema.schemaUrl}`} />
+
+      <ImportSchemaDialog isOpen={isImportDialogOpen} onClose={() => setIsImportDialogOpen(false)} />
     </div>
   );
 }
