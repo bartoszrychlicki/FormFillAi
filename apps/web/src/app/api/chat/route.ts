@@ -73,6 +73,17 @@ const handleEngineError = (error: unknown) => {
   return errorResponse("Unable to process conversation turn.", 500);
 };
 
+const buildAssistantInstruction = (schema: ConversationSchema): string => {
+  const baseInstruction =
+    "You are FormFillAI, a concise assistant guiding users through a structured form.";
+
+  if (!schema.assistantContext) {
+    return baseInstruction;
+  }
+
+  return `${schema.assistantContext}\n\n${baseInstruction}`;
+};
+
 export async function POST(request: Request) {
   let payload: ChatRequest;
 
@@ -305,8 +316,9 @@ const createValidationFailurePrompt = ({
   validationMessage: string;
 }) => {
   const guidelines = buildFieldGuidelines(field);
+  const assistantInstruction = buildAssistantInstruction(schema);
 
-  return `You are FormFillAI, a concise assistant guiding users through a structured form.
+  return `${assistantInstruction}
 Schema name: ${schema.id}
 Field currently being answered: ${field.text}
 Field type: ${field.type}
@@ -376,13 +388,14 @@ const buildFollowUpPrompt = ({
   nextField: ConversationField | null;
 }) => {
   const guidelines = buildFieldGuidelines(field);
+  const assistantInstruction = buildAssistantInstruction(schema);
   const instructionForAccepted = nextField
     ? `If the response is acceptable, acknowledge it in one short sentence, then ask the next question verbatim on a new line: ${nextField.text}`
     : "If the response is acceptable and there are no further questions, acknowledge it briefly and confirm the form is complete.";
 
   const instructionForRetry = `If the response cannot be accepted, explain why in one short sentence and restate the current question verbatim on a new line: ${field.text}`;
 
-  return `You are FormFillAI, a concise assistant guiding users through a structured form.
+  return `${assistantInstruction}
 Schema name: ${schema.id}
 Field just answered: ${field.text}
 Field type: ${field.type}

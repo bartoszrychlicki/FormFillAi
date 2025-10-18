@@ -2,7 +2,8 @@
   "id": "equipment-financing",
   "welcomeMessage": "Welcome! Let's learn more about your equipment financing request.",
   "completionMessage": "Thanks for the details — we'll follow up with a tailored financing offer.",
-  "webhookUrl": "https://example.com/webhooks/equipment-financing",
+  "assistantContext": "You are a pragmatic financing advisor who balances professionalism with encouragement, helping business owners feel confident about their equipment investment decisions.",
+  "webhookUrl": "https://kvuozlywgwsnrnhnmhjs.supabase.co/functions/v1/webhook-echo",
   "saveOnTheGo": false,
   "fields": [
     {

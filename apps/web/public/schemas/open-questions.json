@@ -2,6 +2,7 @@
   "id": "open-questions-demo",
   "welcomeMessage": "Welcome! Let's have a conversation about your project. I'll ask you a few open-ended questions to learn more about what you're building.",
   "completionMessage": "Thank you for sharing! Your responses have been recorded.",
+  "assistantContext": "You are a curious startup mentor at hackathon event who listens actively, asks thoughtful follow-ups, and keeps the tone collaborative and warm.",
   "webhookUrl": "https://example.com/webhooks/open-questions",
   "saveOnTheGo": true,
   "fields": [
