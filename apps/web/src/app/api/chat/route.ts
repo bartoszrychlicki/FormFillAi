@@ -371,8 +371,25 @@ const parseFollowUpResponse = (rawText: string): FollowUpResult | null => {
     processed = fenceIndex >= 0 ? withoutFence.slice(0, fenceIndex) : withoutFence;
   }
 
+  const direct = safeParseFollowUpJson(processed);
+  if (direct) {
+    return direct;
+  }
+
+  const extracted = extractFirstJsonObject(processed);
+  if (extracted) {
+    const fallback = safeParseFollowUpJson(extracted);
+    if (fallback) {
+      return fallback;
+    }
+  }
+
+  return null;
+};
+
+const safeParseFollowUpJson = (input: string): FollowUpResult | null => {
   try {
-    const json = JSON.parse(processed);
+    const json = JSON.parse(input);
     if (!json || typeof json !== "object") {
       return null;
     }
@@ -385,6 +402,60 @@ const parseFollowUpResponse = (rawText: string): FollowUpResult | null => {
     }
   } catch (error) {
     console.warn("Unable to parse follow-up JSON", error);
+  }
+
+  return null;
+};
+
+const extractFirstJsonObject = (input: string): string | null => {
+  const start = input.indexOf("{");
+  if (start < 0) {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let isEscaped = false;
+
+  for (let index = start; index < input.length; index += 1) {
+    const char = input[index];
+
+    if (inString) {
+      if (isEscaped) {
+        isEscaped = false;
+      } else if (char === "\\") {
+        isEscaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return input.slice(start, index + 1);
+      }
+    }
+  }
+
+  try {
+    const end = input.indexOf("}", start);
+    if (end >= 0) {
+      return input.slice(start, end + 1);
+    }
+  } catch {
+    // ignore fallback failure
   }
 
   return null;
