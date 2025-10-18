@@ -1,6 +1,6 @@
 "use client";
 
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { parseConversationSchema, type ConversationSchema } from "@formfillai/shared";
 
@@ -12,6 +12,10 @@ type ConversationStatus = "in_progress" | "completed";
 interface ChatPanelProps {
   schemaUrl: string;
   title?: string;
+  onSchemaLoad?: (schema: ConversationSchema) => void;
+  onDataUpdate?: (data: Record<string, unknown>) => void;
+  onPendingChange?: (isPending: boolean) => void;
+  onExposeEditHandler?: (handler: (fieldId: string, newValue: string) => Promise<void>) => void;
 }
 
 interface WebhookDebugInfo {
@@ -62,16 +66,29 @@ interface UploadedFile {
 const ALLOWED_FILE_TYPES = {
   "application/pdf": { extension: ".pdf", label: "PDF" },
   "text/csv": { extension: ".csv", label: "CSV" },
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": { extension: ".xlsx", label: "Excel" },
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+    extension: ".xlsx",
+    label: "Excel",
+  },
   "application/vnd.ms-excel": { extension: ".xls", label: "Excel" },
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": { extension: ".docx", label: "Word" },
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
+    extension: ".docx",
+    label: "Word",
+  },
   "text/plain": { extension: ".txt", label: "Text" },
   "text/markdown": { extension: ".md", label: "Markdown" },
 } as const;
 
 const MAX_FILE_SIZE = 350 * 1024 * 1024; // 350 MB (Claude's limit)
 
-export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
+export function ChatPanel({
+  schemaUrl,
+  title,
+  onSchemaLoad,
+  onDataUpdate,
+  onPendingChange,
+  onExposeEditHandler,
+}: ChatPanelProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -84,6 +101,7 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
   const [schema, setSchema] = useState<ConversationSchema | null>(null);
   const [schemaDefinition, setSchemaDefinition] = useState<unknown>(null);
   const [schemaLoadError, setSchemaLoadError] = useState<string | null>(null);
+  const [collectedData, setCollectedData] = useState<Record<string, unknown>>({});
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [fileUploadError, setFileUploadError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -93,6 +111,80 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
     messageCounter.current += 1;
     return `message-${messageCounter.current}`;
   };
+
+  const onSchemaLoadRef = useRef(onSchemaLoad);
+  useEffect(() => {
+    onSchemaLoadRef.current = onSchemaLoad;
+  }, [onSchemaLoad]);
+
+  const handleFieldEdit = useCallback(
+    async (fieldId: string, newValue: string) => {
+      if (!sessionId || isPending || !schema) {
+        return;
+      }
+
+      const updatedData = { ...collectedData, [fieldId]: newValue };
+      setCollectedData(updatedData);
+      onDataUpdate?.(updatedData);
+
+      const userMessage: Message = {
+        id: nextMessageId(),
+        role: "user",
+        text: newValue,
+      };
+
+      setMessages((previous) => [...previous, userMessage]);
+      setIsPending(true);
+      onPendingChange?.(true);
+      setError(null);
+
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            reply: { fieldId, value: newValue },
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Unexpected status ${response.status}`);
+        }
+
+        const payload = (await response.json()) as ApiResponse;
+        if (payload.debug?.webhook) {
+          console.info("[FormFillAI] Webhook delivery result", payload.debug.webhook);
+        }
+        setConversationStatus(payload.conversationStatus);
+        setCurrentField(payload.nextField);
+        setMessages((previous) => [
+          ...previous,
+          {
+            id: nextMessageId(),
+            role: "bot",
+            text: payload.botMessage,
+          },
+        ]);
+      } catch (err) {
+        console.error("Failed to update field", err);
+        setError("Unable to update the field. Please try again.");
+        setMessages((previous) => previous.slice(0, -1));
+        setCollectedData(collectedData);
+        onDataUpdate?.(collectedData);
+      } finally {
+        setIsPending(false);
+        onPendingChange?.(false);
+      }
+    },
+    [sessionId, isPending, schema, collectedData, onDataUpdate, onPendingChange],
+  );
+
+  useEffect(() => {
+    if (onExposeEditHandler) {
+      onExposeEditHandler(handleFieldEdit);
+    }
+  }, [onExposeEditHandler, handleFieldEdit]);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,6 +197,7 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
       setConversationStatus("in_progress");
       setCurrentField(null);
       setError(null);
+      setCollectedData({});
     };
 
     const loadSchemaAndStartConversation = async () => {
@@ -129,6 +222,7 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
 
         setSchema(parsed);
         setSchemaDefinition(definition);
+        onSchemaLoadRef.current?.(parsed);
 
         const startResponse = await fetch("/api/chat", {
           method: "POST",
@@ -185,16 +279,13 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
     };
   }, [schemaUrl]);
 
-  const submitReply = async (value: string, { viaSuggestion = false }: { viaSuggestion?: boolean } = {}) => {
+  const submitReply = async (
+    value: string,
+    { viaSuggestion = false }: { viaSuggestion?: boolean } = {},
+  ) => {
     const trimmed = viaSuggestion ? value : value.trim();
 
-    if (
-      !trimmed ||
-      !sessionId ||
-      isPending ||
-      conversationStatus === "completed" ||
-      !schema
-    ) {
+    if (!trimmed || !sessionId || isPending || conversationStatus === "completed" || !schema) {
       return;
     }
 
@@ -211,6 +302,7 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
       setInputValue("");
     }
     setIsPending(true);
+    onPendingChange?.(true);
     setError(null);
 
     try {
@@ -242,6 +334,12 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
           text: payload.botMessage,
         },
       ]);
+
+      if (fieldId) {
+        const updatedData = { ...collectedData, [fieldId]: trimmed };
+        setCollectedData(updatedData);
+        onDataUpdate?.(updatedData);
+      }
     } catch (err) {
       console.error("Failed to submit reply", err);
       setError("Unable to send your reply. Please try again.");
@@ -251,6 +349,7 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
       }
     } finally {
       setIsPending(false);
+      onPendingChange?.(false);
     }
   };
 
@@ -488,7 +587,9 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
       </div>
 
       <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
-        {currentField?.type === "select" && currentField.options && currentField.options.length > 0 ? (
+        {currentField?.type === "select" &&
+        currentField.options &&
+        currentField.options.length > 0 ? (
           <PromptSuggestions
             label="Quick replies"
             suggestions={currentField.options}
@@ -516,7 +617,12 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
               title="Attach document"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                />
               </svg>
             </label>
           </div>
@@ -543,8 +649,18 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
             {isDragging && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md border-2 border-dashed border-sky-500 bg-sky-50/80">
                 <div className="flex flex-col items-center gap-2">
-                  <svg className="h-8 w-8 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  <svg
+                    className="h-8 w-8 text-sky-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
                   </svg>
                   <p className="text-sm font-medium text-sky-700">Drop file to attach</p>
                 </div>
@@ -554,8 +670,18 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
           {uploadedFile && (
             <div className="flex flex-wrap gap-2">
               <div className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5">
-                <svg className="h-4 w-4 flex-shrink-0 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                <svg
+                  className="h-4 w-4 flex-shrink-0 text-slate-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
                 </svg>
                 <span className="max-w-[200px] truncate text-xs font-medium text-slate-700">
                   {uploadedFile.name}
@@ -570,25 +696,28 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
                   aria-label="Remove file"
                 >
                   <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
             </div>
           )}
-          {fileUploadError && (
-            <p className="text-xs text-red-600">{fileUploadError}</p>
-          )}
+          {fileUploadError && <p className="text-xs text-red-600">{fileUploadError}</p>}
         </div>
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span>
             {conversationStatus === "completed"
               ? "Conversation completed"
               : isPending
-              ? "Sending…"
-              : messages.length === 0
-              ? ""
-              : "Waiting for your reply"}
+                ? "Sending…"
+                : messages.length === 0
+                  ? ""
+                  : "Waiting for your reply"}
           </span>
           <button
             type="submit"

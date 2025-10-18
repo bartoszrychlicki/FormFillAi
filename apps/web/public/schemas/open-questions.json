@@ -24,7 +24,16 @@
         "required": true,
         "failure_message": "Please provide a comprehensive project description covering the key aspects listed."
       },
-      "ai_prompt": "Encourage the user to cover all the requested points: objective, solution, tech stack, innovation, target audience, future potential, and challenges. If they miss major sections, prompt them to elaborate on those areas."
+      "ai_prompt": "Encourage the user to cover all the requested points: objective, solution, tech stack, innovation, target audience, future potential, and challenges. If they miss major sections, prompt them to elaborate on those areas.",
+      "expected_aspects": [
+        "Objective",
+        "Solution Overview",
+        "Technology Stack",
+        "Innovation",
+        "Target Audience",
+        "Future Potential",
+        "Challenges Faced"
+      ]
     },
     {
       "id": "software-stack",

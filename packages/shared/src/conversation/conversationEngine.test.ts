@@ -157,9 +157,7 @@ describe("ConversationEngine", () => {
         fieldId: "contact-email",
         value: "out-of-order@example.com",
       }),
-    ).rejects.toThrow(
-      'Expected reply for field "full-name" but received "contact-email".',
-    );
+    ).rejects.toThrow('Expected reply for field "full-name" but received "contact-email".');
   });
 
   it("rejects unknown sessions", async () => {
@@ -246,5 +244,46 @@ describe("ConversationEngine", () => {
 
     expect(cached?.sessionId).toBe(start.session.sessionId);
     expect(cached?.collectedData).toEqual({ "full-name": "Alicia" });
+  });
+
+  it("updates session state with partial answers and missing aspects", async () => {
+    const store = new RecordingStore();
+    const engine = new ConversationEngine({
+      store,
+      idGenerator: () => "session-update",
+    });
+
+    const { session } = await engine.startConversation(baseSchema);
+    const initialUpdateCount = store.updated.length;
+
+    await engine.updateSession({
+      sessionId: session.sessionId,
+      partialAnswers: {
+        "full-name": ["John"],
+      },
+      missingAspects: {
+        "full-name": ["Last name"],
+      },
+    });
+
+    const updated = await engine.getSession(session.sessionId);
+    expect(updated?.partialAnswers).toEqual({
+      "full-name": ["John"],
+    });
+    expect(updated?.missingAspects).toEqual({
+      "full-name": ["Last name"],
+    });
+    expect(store.updated.length).toBe(initialUpdateCount + 1);
+  });
+
+  it("throws error when updating non-existent session", async () => {
+    const engine = new ConversationEngine();
+
+    await expect(
+      engine.updateSession({
+        sessionId: "non-existent",
+        partialAnswers: {},
+      }),
+    ).rejects.toThrow("Session missing: non-existent");
   });
 });

@@ -192,6 +192,63 @@ export async function POST(request: Request) {
     );
   }
 
+  if (currentField.expectedAspects && currentField.expectedAspects.length > 0) {
+    const previousAttempts = session.partialAnswers[currentField.id] ?? [];
+    const completenessResult = await analyzeAnswerCompleteness({
+      schema,
+      field: currentField,
+      answer: String(validationOutcome.value),
+      expectedAspects: currentField.expectedAspects,
+      previousAttempts,
+    });
+
+    if (!completenessResult.complete) {
+      const updatedPartialAnswers = {
+        ...session.partialAnswers,
+        [currentField.id]: [...previousAttempts, String(validationOutcome.value)],
+      };
+      const updatedMissingAspects = {
+        ...session.missingAspects,
+        [currentField.id]: completenessResult.missingAspects,
+      };
+
+      await engine.updateSession({
+        sessionId: session.sessionId,
+        partialAnswers: updatedPartialAnswers,
+        missingAspects: updatedMissingAspects,
+      });
+
+      const followUpMessage =
+        completenessResult.suggestedFollowUp ??
+        `Thank you for that information. Could you please elaborate on the following aspects: ${completenessResult.missingAspects.join(", ")}?`;
+
+      return NextResponse.json(
+        buildResponse({
+          sessionId: session.sessionId,
+          botMessage: followUpMessage,
+          status: session.status,
+          nextField: currentField,
+        }),
+      );
+    }
+
+    if (previousAttempts.length > 0) {
+      const allAnswers = [...previousAttempts, String(validationOutcome.value)];
+      validationOutcome.value = allAnswers.join("\n\n");
+    }
+
+    const updatedPartialAnswers = { ...session.partialAnswers };
+    const updatedMissingAspects = { ...session.missingAspects };
+    delete updatedPartialAnswers[currentField.id];
+    delete updatedMissingAspects[currentField.id];
+
+    await engine.updateSession({
+      sessionId: session.sessionId,
+      partialAnswers: updatedPartialAnswers,
+      missingAspects: updatedMissingAspects,
+    });
+  }
+
   const currentIndex = schema.fields.findIndex((field) => field.id === currentField.id);
   const nextFieldCandidate = currentIndex >= 0 ? (schema.fields[currentIndex + 1] ?? null) : null;
 
@@ -259,13 +316,13 @@ const buildResponse = ({
 }: {
   sessionId: string;
   botMessage: string;
-  status: "in_progress" | "completed";
+  status: "in_progress" | "completed" | "abandoned";
   nextField: ConversationField | null;
   debug?: ChatResponseDebug;
 }): ChatResponse => ({
   sessionId,
   botMessage,
-  conversationStatus: status,
+  conversationStatus: status === "abandoned" ? "in_progress" : status,
   nextField: nextField ? serialiseField(nextField) : null,
   ...(debug ? { debug } : {}),
 });
@@ -749,6 +806,151 @@ const buildFieldGuidelines = (field: ConversationField): string => {
   return guidelines.length > 0
     ? guidelines.join("\n")
     : "- No additional validation guidance provided; rely on the question intent.";
+};
+
+interface CompletenessAnalysisResult {
+  complete: boolean;
+  missingAspects: string[];
+  suggestedFollowUp: string | null;
+}
+
+const analyzeAnswerCompleteness = async ({
+  schema,
+  field,
+  answer,
+  expectedAspects,
+  previousAttempts,
+}: {
+  schema: ConversationSchema;
+  field: ConversationField;
+  answer: string;
+  expectedAspects: string[];
+  previousAttempts: string[];
+}): Promise<CompletenessAnalysisResult> => {
+  const prompt = buildCompletenessPrompt({
+    schema,
+    field,
+    answer,
+    expectedAspects,
+    previousAttempts,
+  });
+
+  try {
+    const result = await generateText({
+      model: anthropic("claude-3-5-haiku-20241022"),
+      prompt,
+    });
+
+    const parsed = parseCompletenessResponse(result.text);
+    if (parsed) {
+      return parsed;
+    }
+    throw new Error("Completeness response was not valid JSON.");
+  } catch (error) {
+    console.error("Failed to analyze answer completeness", error);
+    return {
+      complete: true,
+      missingAspects: [],
+      suggestedFollowUp: null,
+    };
+  }
+};
+
+const buildCompletenessPrompt = ({
+  schema,
+  field,
+  answer,
+  expectedAspects,
+  previousAttempts,
+}: {
+  schema: ConversationSchema;
+  field: ConversationField;
+  answer: string;
+  expectedAspects: string[];
+  previousAttempts: string[];
+}) => {
+  const previousContext =
+    previousAttempts.length > 0
+      ? `\n\nPrevious partial answers from the user:\n${previousAttempts.map((attempt, index) => `${index + 1}. ${attempt}`).join("\n")}`
+      : "";
+
+  return `You are FormFillAI, analyzing whether a user's response adequately covers all required aspects of a multi-part question.
+
+Schema name: ${schema.id}
+Question: ${field.text}
+
+Required aspects that must be covered:
+${expectedAspects.map((aspect) => `- ${aspect}`).join("\n")}
+
+User's current answer: ${answer}${previousContext}
+
+Analyze whether the user has adequately addressed each required aspect. An aspect is "adequately addressed" if the user has provided meaningful, substantive information about it (not just a single word or vague statement).
+
+Respond with a single JSON object using this exact schema:
+{
+  "complete": boolean,
+  "missingAspects": string[],
+  "suggestedFollowUp": string | null
+}
+
+- "complete": true if ALL required aspects are adequately covered, false otherwise
+- "missingAspects": array of aspect names that are missing or inadequately covered
+- "suggestedFollowUp": if not complete, a specific follow-up question asking about the missing aspects. Make it conversational and encouraging. If complete, set to null.
+
+Output JSON only. Do not wrap it in markdown fences or include additional commentary.`;
+};
+
+const parseCompletenessResponse = (rawText: string): CompletenessAnalysisResult | null => {
+  const text = rawText.trim();
+  let processed = text;
+
+  if (processed.startsWith("```")) {
+    const withoutFence = processed.replace(/^```[a-zA-Z]*\n?/, "");
+    const fenceIndex = withoutFence.lastIndexOf("```");
+    processed = fenceIndex >= 0 ? withoutFence.slice(0, fenceIndex) : withoutFence;
+  }
+
+  const extracted = extractFirstJsonObject(processed);
+  if (extracted) {
+    return safeParseCompletenessJson(extracted);
+  }
+
+  return null;
+};
+
+const safeParseCompletenessJson = (input: string): CompletenessAnalysisResult | null => {
+  try {
+    const candidate = input.trimEnd();
+    if (!candidate.endsWith("}")) {
+      return null;
+    }
+
+    const json = JSON.parse(candidate);
+    if (!json || typeof json !== "object") {
+      return null;
+    }
+
+    const complete = (json as { complete?: unknown }).complete;
+    const missingAspects = (json as { missingAspects?: unknown }).missingAspects;
+    const suggestedFollowUp = (json as { suggestedFollowUp?: unknown }).suggestedFollowUp;
+
+    if (
+      typeof complete === "boolean" &&
+      Array.isArray(missingAspects) &&
+      missingAspects.every((aspect) => typeof aspect === "string") &&
+      (suggestedFollowUp === null || typeof suggestedFollowUp === "string")
+    ) {
+      return {
+        complete,
+        missingAspects,
+        suggestedFollowUp,
+      };
+    }
+  } catch (error) {
+    console.warn("Unable to parse completeness JSON", error);
+  }
+
+  return null;
 };
 
 const deliverToWebhook = async (
