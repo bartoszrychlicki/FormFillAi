@@ -47,6 +47,7 @@ interface ApiResponse {
   } | null;
   fieldAccepted?: boolean;
   acceptedFieldId?: string;
+  enhancedAnswer?: string;
   debug?: ApiResponseDebug;
 }
 
@@ -166,9 +167,21 @@ export function ChatPanel({
         ]);
 
         if (payload.fieldAccepted && payload.acceptedFieldId) {
-          const updatedData = { ...collectedData, [payload.acceptedFieldId]: newValue };
+          const finalAnswer = payload.enhancedAnswer ?? newValue;
+          const updatedData = { ...collectedData, [payload.acceptedFieldId]: finalAnswer };
           setCollectedData(updatedData);
           onDataUpdate?.(updatedData);
+
+          if (payload.enhancedAnswer && payload.enhancedAnswer !== newValue) {
+            setMessages((previous) => [
+              ...previous,
+              {
+                id: nextMessageId(),
+                role: "system",
+                text: `✓ Enhanced: "${payload.enhancedAnswer}"`,
+              },
+            ]);
+          }
         }
       } catch (err) {
         console.error("Failed to update field", err);
@@ -339,9 +352,21 @@ export function ChatPanel({
       ]);
 
       if (payload.fieldAccepted && payload.acceptedFieldId) {
-        const updatedData = { ...collectedData, [payload.acceptedFieldId]: trimmed };
+        const finalAnswer = payload.enhancedAnswer ?? trimmed;
+        const updatedData = { ...collectedData, [payload.acceptedFieldId]: finalAnswer };
         setCollectedData(updatedData);
         onDataUpdate?.(updatedData);
+
+        if (payload.enhancedAnswer && payload.enhancedAnswer !== trimmed) {
+          setMessages((previous) => [
+            ...previous,
+            {
+              id: nextMessageId(),
+              role: "system",
+              text: `✓ Enhanced: "${payload.enhancedAnswer}"`,
+            },
+          ]);
+        }
       }
     } catch (err) {
       console.error("Failed to submit reply", err);
@@ -571,7 +596,9 @@ export function ChatPanel({
                 className={
                   message.role === "user"
                     ? "ml-auto max-w-[80%] rounded-md bg-sky-600 px-3 py-2 text-sm text-white"
-                    : "max-w-[80%] rounded-md bg-white px-3 py-2 text-sm text-slate-700 shadow"
+                    : message.role === "system"
+                      ? "mx-auto max-w-[90%] rounded-md bg-green-50 px-3 py-2 text-xs text-green-700 italic border border-green-200"
+                      : "max-w-[80%] rounded-md bg-white px-3 py-2 text-sm text-slate-700 shadow"
                 }
               >
                 {message.text}
