@@ -14,6 +14,23 @@ interface ChatPanelProps {
   title?: string;
 }
 
+interface WebhookDebugInfo {
+  url: string;
+  status: number | null;
+  ok: boolean;
+  body: string | null;
+  request: {
+    sessionId: string;
+    schemaId: string;
+    data: Record<string, unknown>;
+  };
+  error?: string;
+}
+
+interface ApiResponseDebug {
+  webhook?: WebhookDebugInfo;
+}
+
 interface ApiResponse {
   sessionId: string;
   botMessage: string;
@@ -24,6 +41,7 @@ interface ApiResponse {
     type: string;
     options?: string[];
   } | null;
+  debug?: ApiResponseDebug;
 }
 
 type MessageRole = "bot" | "user" | "system";
@@ -105,6 +123,9 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
         }
 
         const payload = (await startResponse.json()) as ApiResponse;
+        if (payload.debug?.webhook) {
+          console.info("[FormFillAI] Webhook delivery result", payload.debug.webhook);
+        }
 
         setSessionId(payload.sessionId);
         setConversationStatus(payload.conversationStatus);
@@ -181,6 +202,9 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
       }
 
       const payload = (await response.json()) as ApiResponse;
+      if (payload.debug?.webhook) {
+        console.info("[FormFillAI] Webhook delivery result", payload.debug.webhook);
+      }
       setConversationStatus(payload.conversationStatus);
       setCurrentField(payload.nextField);
       setMessages((previous) => [

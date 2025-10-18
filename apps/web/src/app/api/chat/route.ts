@@ -24,11 +24,29 @@ interface ChatRequest {
   };
 }
 
+interface WebhookDeliveryResult {
+  url: string;
+  status: number | null;
+  ok: boolean;
+  body: string | null;
+  request: {
+    sessionId: string;
+    schemaId: string;
+    data: Record<string, unknown>;
+  };
+  error?: string;
+}
+
+interface ChatResponseDebug {
+  webhook?: WebhookDeliveryResult;
+}
+
 interface ChatResponse {
   sessionId: string;
   botMessage: string;
   conversationStatus: "in_progress" | "completed";
   nextField: NextFieldPayload | null;
+  debug?: ChatResponseDebug;
 }
 
 interface NextFieldPayload {
@@ -181,8 +199,17 @@ export async function POST(request: Request) {
     return handleEngineError(error);
   }
 
+  let debug: ChatResponseDebug | undefined;
+
   if (turn.completed) {
-    await deliverToWebhook(schema, turn.session.sessionId, turn.session.collectedData);
+    const result = await deliverToWebhook(
+      schema,
+      turn.session.sessionId,
+      turn.session.collectedData,
+    );
+    if (process.env.NODE_ENV !== "production") {
+      debug = { webhook: result };
+    }
     await engine.clearSession(turn.session.sessionId);
   }
 
@@ -192,6 +219,7 @@ export async function POST(request: Request) {
       botMessage: followUp.message,
       status: turn.session.status,
       nextField: turn.nextField,
+      debug,
     }),
   );
 }
@@ -201,16 +229,19 @@ const buildResponse = ({
   botMessage,
   status,
   nextField,
+  debug,
 }: {
   sessionId: string;
   botMessage: string;
   status: "in_progress" | "completed";
   nextField: ConversationField | null;
+  debug?: ChatResponseDebug;
 }): ChatResponse => ({
   sessionId,
   botMessage,
   conversationStatus: status,
   nextField: nextField ? serialiseField(nextField) : null,
+  ...(debug ? { debug } : {}),
 });
 
 const serialiseField = (field: ConversationField): NextFieldPayload => ({
@@ -543,20 +574,54 @@ const deliverToWebhook = async (
   schema: ConversationSchema,
   sessionId: string,
   payload: Record<string, unknown>,
-) => {
+): Promise<WebhookDeliveryResult> => {
+  const url = schema.webhookUrl.toString();
+  const requestBody = {
+    sessionId,
+    schemaId: schema.id,
+    data: payload,
+  };
+
   try {
-    await fetch(schema.webhookUrl, {
+    const response = await fetch(schema.webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        sessionId,
-        schemaId: schema.id,
-        data: payload,
-      }),
+      body: JSON.stringify(requestBody),
     });
+
+    let responseText: string | null = null;
+    try {
+      responseText = await response.text();
+    } catch (readError) {
+      console.warn("Unable to read webhook response body", readError);
+    }
+
+    const snapshot = {
+      url,
+      status: response.status,
+      ok: response.ok,
+      body: responseText?.slice(0, 500) ?? null,
+      request: requestBody,
+    };
+
+    if (response.ok) {
+      console.info("Webhook delivered successfully", snapshot);
+    } else {
+      console.warn("Webhook responded with non-2xx status", snapshot);
+    }
+
+    return snapshot;
   } catch (error) {
     console.error("Webhook delivery failed", error);
+    return {
+      url,
+      status: null,
+      ok: false,
+      body: null,
+      request: requestBody,
+      error: error instanceof Error ? error.message : "Unknown error occurred.",
+    };
   }
 };
