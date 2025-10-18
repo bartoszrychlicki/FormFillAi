@@ -62,6 +62,25 @@ describe("POST /api/chat", () => {
     expect(mockedGenerateText).not.toHaveBeenCalled();
   });
 
+  it("returns an error when the OpenAI API key is missing", async () => {
+    const originalKey = process.env.OPENAI_API_KEY;
+    try {
+      delete process.env.OPENAI_API_KEY;
+
+      const response = await POST(jsonRequest({ schema: loanIntakeSchemaDefinition }));
+      expect(response.status).toBe(503);
+
+      const payload = await response.json();
+      expect(payload.error).toContain("OPENAI_API_KEY");
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = originalKey;
+      }
+    }
+  });
+
   it("advances the conversation and asks the next question via AI", async () => {
     const startResponse = await POST(jsonRequest({ schema: loanIntakeSchemaDefinition }));
     const { sessionId } = await startResponse.json();

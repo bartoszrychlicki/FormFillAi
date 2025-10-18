@@ -11,6 +11,8 @@ import {
 import { getConversationEngine } from "@/lib/conversation/engine";
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+const isAiConfigured = (): boolean =>
+  typeof process.env.OPENAI_API_KEY === "string" && process.env.OPENAI_API_KEY.trim().length > 0;
 
 interface ChatRequest {
   sessionId?: string;
@@ -60,6 +62,13 @@ export async function POST(request: Request) {
     payload = await request.json();
   } catch {
     return errorResponse("Invalid JSON payload.", 400);
+  }
+
+  if (!isAiConfigured()) {
+    return errorResponse(
+      "AI integration is not configured. Set the OPENAI_API_KEY environment variable to enable chat.",
+      503,
+    );
   }
 
   const engine = getConversationEngine();
