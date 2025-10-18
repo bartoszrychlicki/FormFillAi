@@ -55,6 +55,8 @@ interface ChatResponse {
   botMessage: string;
   conversationStatus: "in_progress" | "completed";
   nextField: NextFieldPayload | null;
+  fieldAccepted?: boolean;
+  acceptedFieldId?: string;
   debug?: ChatResponseDebug;
 }
 
@@ -188,6 +190,7 @@ export async function POST(request: Request) {
         botMessage,
         status: session.status,
         nextField: currentField,
+        fieldAccepted: false,
       }),
     );
   }
@@ -228,6 +231,7 @@ export async function POST(request: Request) {
           botMessage: followUpMessage,
           status: session.status,
           nextField: currentField,
+          fieldAccepted: false,
         }),
       );
     }
@@ -267,6 +271,7 @@ export async function POST(request: Request) {
         botMessage: followUp.message,
         status: session.status,
         nextField: currentField,
+        fieldAccepted: false,
       }),
     );
   }
@@ -303,6 +308,8 @@ export async function POST(request: Request) {
       status: turn.session.status,
       nextField: turn.nextField,
       debug,
+      fieldAccepted: true,
+      acceptedFieldId: currentField.id,
     }),
   );
 }
@@ -313,17 +320,23 @@ const buildResponse = ({
   status,
   nextField,
   debug,
+  fieldAccepted,
+  acceptedFieldId,
 }: {
   sessionId: string;
   botMessage: string;
   status: "in_progress" | "completed" | "abandoned";
   nextField: ConversationField | null;
   debug?: ChatResponseDebug;
+  fieldAccepted?: boolean;
+  acceptedFieldId?: string;
 }): ChatResponse => ({
   sessionId,
   botMessage,
   conversationStatus: status === "abandoned" ? "in_progress" : status,
   nextField: nextField ? serialiseField(nextField) : null,
+  ...(fieldAccepted !== undefined ? { fieldAccepted } : {}),
+  ...(acceptedFieldId ? { acceptedFieldId } : {}),
   ...(debug ? { debug } : {}),
 });
 

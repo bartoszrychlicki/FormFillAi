@@ -45,6 +45,8 @@ interface ApiResponse {
     type: string;
     options?: string[];
   } | null;
+  fieldAccepted?: boolean;
+  acceptedFieldId?: string;
   debug?: ApiResponseDebug;
 }
 
@@ -123,10 +125,6 @@ export function ChatPanel({
         return;
       }
 
-      const updatedData = { ...collectedData, [fieldId]: newValue };
-      setCollectedData(updatedData);
-      onDataUpdate?.(updatedData);
-
       const userMessage: Message = {
         id: nextMessageId(),
         role: "user",
@@ -166,12 +164,16 @@ export function ChatPanel({
             text: payload.botMessage,
           },
         ]);
+
+        if (payload.fieldAccepted && payload.acceptedFieldId) {
+          const updatedData = { ...collectedData, [payload.acceptedFieldId]: newValue };
+          setCollectedData(updatedData);
+          onDataUpdate?.(updatedData);
+        }
       } catch (err) {
         console.error("Failed to update field", err);
         setError("Unable to update the field. Please try again.");
         setMessages((previous) => previous.slice(0, -1));
-        setCollectedData(collectedData);
-        onDataUpdate?.(collectedData);
       } finally {
         setIsPending(false);
         onPendingChange?.(false);
@@ -277,6 +279,7 @@ export function ChatPanel({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schemaUrl]);
 
   const submitReply = async (
@@ -335,8 +338,8 @@ export function ChatPanel({
         },
       ]);
 
-      if (fieldId) {
-        const updatedData = { ...collectedData, [fieldId]: trimmed };
+      if (payload.fieldAccepted && payload.acceptedFieldId) {
+        const updatedData = { ...collectedData, [payload.acceptedFieldId]: trimmed };
         setCollectedData(updatedData);
         onDataUpdate?.(updatedData);
       }
