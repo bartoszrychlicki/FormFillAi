@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { generateText, LanguageModel } from "ai";
+import { generateText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import Anthropic from "@anthropic-ai/sdk";
 import {
   parseConversationSchema,
   validateFieldValue,
@@ -14,6 +15,13 @@ const isAiConfigured = (): boolean =>
   typeof process.env.ANTHROPIC_API_KEY === "string" &&
   process.env.ANTHROPIC_API_KEY.trim().length > 0;
 
+interface UploadedFile {
+  name: string;
+  type: string;
+  size: number;
+  base64Data: string;
+}
+
 interface ChatRequest {
   sessionId?: string;
   schema?: unknown;
@@ -22,6 +30,7 @@ interface ChatRequest {
     fieldId?: string;
     value: unknown;
   };
+  file?: UploadedFile;
 }
 
 interface WebhookDeliveryResult {
@@ -105,7 +114,11 @@ export async function POST(request: Request) {
     }
 
     const turn = await engine.startConversation(schema);
-    const botMessage = composeIntroMessage(schema, turn.nextField);
+    const botMessage = await composeIntroMessage({
+      schema,
+      nextField: turn.nextField,
+      file: payload.file,
+    });
 
     return NextResponse.json(
       buildResponse({
@@ -155,6 +168,7 @@ export async function POST(request: Request) {
       field: currentField,
       answer: replyValue,
       validationMessage: validationOutcome.message,
+      file: payload.file,
     });
 
     return NextResponse.json(
@@ -175,6 +189,7 @@ export async function POST(request: Request) {
     field: currentField,
     answer: validationOutcome.value,
     nextField: nextFieldCandidate,
+    file: payload.file,
   });
 
   if (followUp.status === "retry") {
@@ -251,14 +266,74 @@ const serialiseField = (field: ConversationField): NextFieldPayload => ({
   ...(field.options ? { options: field.options } : {}),
 });
 
-const composeIntroMessage = (
-  schema: ConversationSchema,
-  nextField: ConversationField | null,
-): string => {
-  if (!nextField) {
-    return schema.welcomeMessage;
+const composeIntroMessage = async ({
+  schema,
+  nextField,
+  file,
+}: {
+  schema: ConversationSchema;
+  nextField: ConversationField | null;
+  file?: UploadedFile;
+}): Promise<string> => {
+  const baseMessage = nextField
+    ? `${schema.welcomeMessage}\n\n${nextField.text}`
+    : schema.welcomeMessage;
+
+  if (!file) {
+    return baseMessage;
   }
-  return `${schema.welcomeMessage}\n\n${nextField.text}`;
+
+  // AI should analyze the file and extract relevant data proactively
+  try {
+    const analysisPrompt = `You are FormFillAI, a helpful assistant that analyzes documents and fills forms.
+
+A user has uploaded a document: "${file.name}"
+Form schema: ${schema.id}
+First question: ${nextField?.text ?? "No questions"}
+
+Your task:
+1. Quickly identify what type of document this is (e.g., "invoice", "resume", "form")
+2. Check if the document contains an obvious answer to the first question
+3. Give a brief 1-2 sentence acknowledgment, then ask the first question
+
+Keep your response SHORT and friendly. Format:
+
+"Thanks for uploading {filename}! I've analyzed it - it's [document type]. ${nextField ? "I'll use any relevant information as we go. " + nextField.text : ""}"
+
+Do NOT list all the data. Just acknowledge the file type and ask the first question.`;
+
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const message = await client.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2048,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: {
+                type: "base64",
+                media_type: file.type as "application/pdf",
+                data: file.base64Data,
+              },
+            },
+            {
+              type: "text",
+              text: analysisPrompt,
+            },
+          ],
+        },
+      ],
+    });
+
+    const textContent = message.content.find((block) => block.type === "text");
+    const text = textContent && textContent.type === "text" ? textContent.text.trim() : "";
+    return text || baseMessage;
+  } catch (error) {
+    console.error("Failed to analyze uploaded file", error);
+    return `${baseMessage}\n\n(Note: I see you've uploaded "${file.name}" but couldn't analyze it. Please provide the information manually.)`;
+  }
 };
 
 const composeValidationFailureMessage = async ({
@@ -266,11 +341,13 @@ const composeValidationFailureMessage = async ({
   field,
   answer,
   validationMessage,
+  file,
 }: {
   schema: ConversationSchema;
   field: ConversationField;
   answer: unknown;
   validationMessage: string;
+  file?: UploadedFile;
 }): Promise<string> => {
   const prompt = createValidationFailurePrompt({
     schema,
@@ -280,12 +357,43 @@ const composeValidationFailureMessage = async ({
   });
 
   try {
-    const result = await generateText({
-      model: anthropic("claude-3-5-haiku-20241022"),
-      prompt,
-    });
+    let text: string;
 
-    const text = result.text.trim();
+    if (file) {
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const message = await client.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2048,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "document",
+                source: {
+                  type: "base64",
+                  media_type: file.type as "application/pdf",
+                  data: file.base64Data,
+                },
+              },
+              {
+                type: "text",
+                text: `You have access to the uploaded document "${file.name}". Use it to help guide the user if relevant.\n\n${prompt}`,
+              },
+            ],
+          },
+        ],
+      });
+      const textContent = message.content.find((block) => block.type === "text");
+      text = textContent && textContent.type === "text" ? textContent.text.trim() : "";
+    } else {
+      const result = await generateText({
+        model: anthropic("claude-4-sonnet-20250514"),
+        prompt,
+      });
+      text = result.text.trim();
+    }
+
     return text.length > 0 ? text : fallbackValidation(field, validationMessage);
   } catch (error) {
     console.error("Validation guidance prompt failed", error);
@@ -336,21 +444,64 @@ const generateAnswerResponse = async ({
   field,
   answer,
   nextField,
+  file,
 }: {
   schema: ConversationSchema;
   field: ConversationField;
   answer: unknown;
   nextField: ConversationField | null;
+  file?: UploadedFile;
 }): Promise<FollowUpResult> => {
   const prompt = buildFollowUpPrompt({ schema, field, answer, nextField });
 
   try {
-    const result = await generateText({
-      model: anthropic("claude-3-5-haiku-20241022"),
-      prompt,
-    });
+    let resultText: string;
 
-    const parsed = parseFollowUpResponse(result.text);
+    if (file) {
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const enhancedPrompt = `IMPORTANT: The user has uploaded "${file.name}". You MUST:
+1. Analyze the document to find the answer for the current field
+2. If the user's answer is incomplete or says "read from file" or similar, extract the correct answer from the document
+3. If the document contains the answer, use it and acknowledge where you got it from
+4. If the document doesn't contain the answer, explain what you looked for but couldn't find
+
+${prompt}`;
+
+      const message = await client.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2048,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "document",
+                source: {
+                  type: "base64",
+                  media_type: file.type as "application/pdf",
+                  data: file.base64Data,
+                },
+              },
+              {
+                type: "text",
+                text: enhancedPrompt,
+              },
+            ],
+          },
+        ],
+      });
+
+      const textContent = message.content.find((block) => block.type === "text");
+      resultText = textContent && textContent.type === "text" ? textContent.text : "";
+    } else {
+      const result = await generateText({
+        model: anthropic("claude-4-sonnet-20250514"),
+        prompt,
+      });
+      resultText = result.text;
+    }
+
+    const parsed = parseFollowUpResponse(resultText);
     if (parsed) {
       return enforceFollowUpContract(parsed, { schema, field, nextField });
     }
@@ -376,8 +527,26 @@ const buildFollowUpPrompt = ({
   nextField: ConversationField | null;
 }) => {
   const guidelines = buildFieldGuidelines(field);
+
+  // Determine if the next field could benefit from a document upload
+  const shouldSuggestFileUpload =
+    nextField &&
+    (nextField.type === "text" || nextField.type === "email" || nextField.type === "number") &&
+    (nextField.text.toLowerCase().includes("name") ||
+      nextField.text.toLowerCase().includes("email") ||
+      nextField.text.toLowerCase().includes("phone") ||
+      nextField.text.toLowerCase().includes("address") ||
+      nextField.text.toLowerCase().includes("company") ||
+      nextField.text.toLowerCase().includes("invoice") ||
+      nextField.text.toLowerCase().includes("financial") ||
+      nextField.text.toLowerCase().includes("team"));
+
+  const fileUploadHint = shouldSuggestFileUpload
+    ? '\n\nIMPORTANT: If the next question asks for information typically found in documents (invoices, forms, contracts, etc.), add this helpful suggestion at the end of your message:\n"💡 Tip: You can upload a document (PDF, Excel, Word, etc.) and I\'ll extract this information for you!"'
+    : "";
+
   const instructionForAccepted = nextField
-    ? `If the response is acceptable, acknowledge it in one short sentence, then ask the next question verbatim on a new line: ${nextField.text}`
+    ? `If the response is acceptable, acknowledge it in one short sentence, then ask the next question verbatim on a new line: ${nextField.text}${fileUploadHint}`
     : "If the response is acceptable and there are no further questions, acknowledge it briefly and confirm the form is complete.";
 
   const instructionForRetry = `If the response cannot be accepted, explain why in one short sentence and restate the current question verbatim on a new line: ${field.text}`;
