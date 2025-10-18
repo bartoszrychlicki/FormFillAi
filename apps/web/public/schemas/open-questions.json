@@ -1,0 +1,50 @@
+{
+  "id": "open-questions-demo",
+  "welcomeMessage": "Welcome! Let's have a conversation about your project. I'll ask you a few open-ended questions to learn more about what you're building.",
+  "completionMessage": "Thank you for sharing! Your responses have been recorded.",
+  "assistantContext": "You are a curious startup mentor at hackathon event who listens actively, asks thoughtful follow-ups, and keeps the tone collaborative and warm.",
+  "webhookUrl": "https://example.com/webhooks/open-questions",
+  "saveOnTheGo": true,
+  "fields": [
+    {
+      "id": "tagline",
+      "text": "Tagline/Elevator Pitch: One-sentence project description",
+      "type": "text",
+      "validation": {
+        "required": true,
+        "failure_message": "Please provide a one-sentence description that captures the essence of your project."
+      },
+      "ai_prompt": "Request a concise, single-sentence pitch. If the response is too long or multiple sentences, ask them to condense it into one compelling sentence."
+    },
+    {
+      "id": "project-description",
+      "text": "Description of Project: Tell us about your project! Please include: Objective (problem/need), Solution Overview, Technology Stack, Innovation (what's different), Target Audience, Future Potential, and Challenges Faced.",
+      "type": "text",
+      "validation": {
+        "required": true,
+        "failure_message": "Please provide a comprehensive project description covering the key aspects listed."
+      },
+      "ai_prompt": "Encourage the user to cover all the requested points: objective, solution, tech stack, innovation, target audience, future potential, and challenges. If they miss major sections, prompt them to elaborate on those areas."
+    },
+    {
+      "id": "software-stack",
+      "text": "Software stack / technologies used",
+      "type": "text",
+      "validation": {
+        "required": true,
+        "failure_message": "Please list the technologies, frameworks, and tools you used in your project."
+      },
+      "ai_prompt": "Accept a list of technologies in any format. If they haven't mentioned the sponsor technologies they used, remind them to include those as well."
+    },
+    {
+      "id": "additional-feedback",
+      "text": "Anything else? Any quick feedback about the event? Any other sponsors you want to see?",
+      "type": "text",
+      "validation": {
+        "required": false,
+        "failure_message": "Feel free to share any additional thoughts or feedback."
+      },
+      "ai_prompt": "This is completely optional. Accept any feedback, suggestions, or additional comments the user wants to share about their experience."
+    }
+  ]
+}

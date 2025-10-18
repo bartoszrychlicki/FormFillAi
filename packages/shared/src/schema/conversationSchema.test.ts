@@ -35,6 +35,7 @@ describe("parseConversationSchema", () => {
       id: "loan-intake",
       welcomeMessage: "Hi there! Let's get started.",
       completionMessage: "Thanks for sharing your details.",
+      assistantContext: undefined,
       webhookUrl: new URL("https://example.com/webhook"),
       saveOnTheGo: false,
       fields: [
@@ -62,6 +63,22 @@ describe("parseConversationSchema", () => {
         },
       ],
     });
+  });
+
+  it("trims assistant context and drops empty values", () => {
+    const parsed = parseConversationSchema({
+      ...baseSchema,
+      assistantContext: "  Be a warm and encouraging teammate.  ",
+    });
+
+    expect(parsed.assistantContext).toBe("Be a warm and encouraging teammate.");
+
+    const parsedEmpty = parseConversationSchema({
+      ...baseSchema,
+      assistantContext: "   ",
+    });
+
+    expect(parsedEmpty.assistantContext).toBeUndefined();
   });
 
   it("throws when a field type is unknown", () => {

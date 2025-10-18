@@ -82,6 +82,17 @@ const handleEngineError = (error: unknown) => {
   return errorResponse("Unable to process conversation turn.", 500);
 };
 
+const buildAssistantInstruction = (schema: ConversationSchema): string => {
+  const baseInstruction =
+    "You are FormFillAI, a concise assistant guiding users through a structured form.";
+
+  if (!schema.assistantContext) {
+    return baseInstruction;
+  }
+
+  return `${schema.assistantContext}\n\n${baseInstruction}`;
+};
+
 export async function POST(request: Request) {
   let payload: ChatRequest;
 
@@ -413,8 +424,9 @@ const createValidationFailurePrompt = ({
   validationMessage: string;
 }) => {
   const guidelines = buildFieldGuidelines(field);
+  const assistantInstruction = buildAssistantInstruction(schema);
 
-  return `You are FormFillAI, a concise assistant guiding users through a structured form.
+  return `${assistantInstruction}
 Schema name: ${schema.id}
 Field currently being answered: ${field.text}
 Field type: ${field.type}
@@ -527,6 +539,7 @@ const buildFollowUpPrompt = ({
   nextField: ConversationField | null;
 }) => {
   const guidelines = buildFieldGuidelines(field);
+  const assistantInstruction = buildAssistantInstruction(schema);
 
   // Determine if the next field could benefit from a document upload
   const shouldSuggestFileUpload =
@@ -544,14 +557,13 @@ const buildFollowUpPrompt = ({
   const fileUploadHint = shouldSuggestFileUpload
     ? '\n\nIMPORTANT: If the next question asks for information typically found in documents (invoices, forms, contracts, etc.), add this helpful suggestion at the end of your message:\n"💡 Tip: You can upload a document (PDF, Excel, Word, etc.) and I\'ll extract this information for you!"'
     : "";
-
   const instructionForAccepted = nextField
     ? `If the response is acceptable, acknowledge it in one short sentence, then ask the next question verbatim on a new line: ${nextField.text}${fileUploadHint}`
     : "If the response is acceptable and there are no further questions, acknowledge it briefly and confirm the form is complete.";
 
   const instructionForRetry = `If the response cannot be accepted, explain why in one short sentence and restate the current question verbatim on a new line: ${field.text}`;
 
-  return `You are FormFillAI, a concise assistant guiding users through a structured form.
+  return `${assistantInstruction}
 Schema name: ${schema.id}
 Field just answered: ${field.text}
 Field type: ${field.type}
