@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { generateText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { generateText, LanguageModel } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 import {
   parseConversationSchema,
   validateFieldValue,
@@ -10,9 +10,9 @@ import {
 } from "@formfillai/shared";
 import { getConversationEngine } from "@/lib/conversation/engine";
 
-const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
 const isAiConfigured = (): boolean =>
-  typeof process.env.OPENAI_API_KEY === "string" && process.env.OPENAI_API_KEY.trim().length > 0;
+  typeof process.env.ANTHROPIC_API_KEY === "string" &&
+  process.env.ANTHROPIC_API_KEY.trim().length > 0;
 
 interface ChatRequest {
   sessionId?: string;
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
 
   if (!isAiConfigured()) {
     return errorResponse(
-      "AI integration is not configured. Set the OPENAI_API_KEY environment variable to enable chat.",
+      "AI integration is not configured. Set the ANTHROPIC_API_KEY environment variable to enable chat.",
       503,
     );
   }
@@ -150,7 +150,7 @@ export async function POST(request: Request) {
   }
 
   const currentIndex = schema.fields.findIndex((field) => field.id === currentField.id);
-  const nextFieldCandidate = currentIndex >= 0 ? schema.fields[currentIndex + 1] ?? null : null;
+  const nextFieldCandidate = currentIndex >= 0 ? (schema.fields[currentIndex + 1] ?? null) : null;
 
   const followUp = await generateAnswerResponse({
     schema,
@@ -250,7 +250,7 @@ const composeValidationFailureMessage = async ({
 
   try {
     const result = await generateText({
-      model: openai(DEFAULT_MODEL),
+      model: anthropic("claude-3-5-haiku-20241022"),
       prompt,
     });
 
@@ -288,8 +288,7 @@ ${field.text}
 `;
 };
 
-const fallbackFollowUp = (nextField: ConversationField): string =>
-  `Thanks! ${nextField.text}`;
+const fallbackFollowUp = (nextField: ConversationField): string => `Thanks! ${nextField.text}`;
 
 const fallbackValidation = (field: ConversationField, validationMessage: string): string =>
   `${validationMessage}\n\n${field.text}`;
@@ -316,7 +315,7 @@ const generateAnswerResponse = async ({
 
   try {
     const result = await generateText({
-      model: openai(DEFAULT_MODEL),
+      model: anthropic("claude-3-5-haiku-20241022"),
       prompt,
     });
 
@@ -403,7 +402,11 @@ const safeParseFollowUpJson = (input: string): FollowUpResult | null => {
     const status = (json as { status?: string }).status;
     const message = (json as { message?: unknown }).message;
 
-    if ((status === "accepted" || status === "retry") && typeof message === "string" && message.trim().length > 0) {
+    if (
+      (status === "accepted" || status === "retry") &&
+      typeof message === "string" &&
+      message.trim().length > 0
+    ) {
       return { status, message: message.trim() };
     }
   } catch (error) {
@@ -510,7 +513,8 @@ const ensureIncludesQuestion = (message: string, question: string): string => {
   return `${message}${separator}${question}`;
 };
 
-const normaliseWhitespace = (value: string): string => value.replace(/\s+/g, " ").trim().toLowerCase();
+const normaliseWhitespace = (value: string): string =>
+  value.replace(/\s+/g, " ").trim().toLowerCase();
 
 const buildFieldGuidelines = (field: ConversationField): string => {
   const guidelines: string[] = [];
