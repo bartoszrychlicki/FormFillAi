@@ -24,6 +24,7 @@ export interface ConversationSchema {
   id: string;
   welcomeMessage: string;
   completionMessage: string;
+  assistantContext?: string;
   webhookUrl: URL;
   fields: ConversationField[];
   saveOnTheGo: boolean;
@@ -94,6 +95,10 @@ const conversationSchemaWithoutTransforms = z
     id: z.string().min(1, "Conversation schema id cannot be empty."),
     welcomeMessage: z.string().min(1, "Welcome message cannot be empty."),
     completionMessage: z.string().min(1, "Completion message cannot be empty."),
+    assistantContext: z
+      .string()
+      .max(400, "Assistant context must be 400 characters or fewer when provided.")
+      .optional(),
     webhookUrl: z.string().min(1, "Webhook URL is required."),
     saveOnTheGo: z.boolean().optional(),
     fields: z.array(rawFieldSchema).min(1, "Conversation schema must declare at least one field."),
@@ -148,10 +153,14 @@ export const conversationSchema = conversationSchemaWithoutTransforms.transform(
     throw new Error("Webhook URL must be a valid https endpoint.");
   }
 
+  const assistantContext = value.assistantContext?.trim();
+
   return {
     id: value.id,
     welcomeMessage: value.welcomeMessage,
     completionMessage: value.completionMessage,
+    assistantContext:
+      assistantContext && assistantContext.length > 0 ? assistantContext : undefined,
     webhookUrl: webhook,
     saveOnTheGo: value.saveOnTheGo ?? false,
     fields: value.fields.map(normaliseField),
@@ -231,6 +240,10 @@ export const conversationSchemaForGeneration = z
       .regex(/^[a-z0-9-]+$/, "Schema id must be kebab-case."),
     welcomeMessage: z.string().min(10, "Welcome message should be at least 10 characters."),
     completionMessage: z.string().min(10, "Completion message should be at least 10 characters."),
+    assistantContext: z
+      .string()
+      .max(400, "Assistant context must be 400 characters or fewer when provided.")
+      .optional(),
     webhookUrl: z.string().url("Webhook URL must be a valid URL."),
     saveOnTheGo: z.boolean().optional(),
     fields: z

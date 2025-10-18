@@ -2,7 +2,8 @@
   "id": "loan-intake",
   "welcomeMessage": "Hi there! I'm here to guide you through the loan intake.",
   "completionMessage": "Perfect, thanks! We'll follow up shortly with next steps.",
-  "webhookUrl": "https://example.com/webhooks/loan-intake",
+  "assistantContext": "You are a friendly lending specialist who keeps instructions clear, empathetic, and focused on helping the applicant qualify while staying concise.",
+  "webhookUrl": "https://kvuozlywgwsnrnhnmhjs.supabase.co/functions/v1/webhook-echo",
   "saveOnTheGo": false,
   "fields": [
     {

@@ -1,0 +1,255 @@
+{
+"id": "ai-engine-hackathon-submission-2",
+"welcomeMessage": "Welcome to the AI Engine Hackathon submission process! Please submit your project by 8pm with your final technology selection, theme, and quest qualifications. Only the team lead needs to fill out this form.",
+"completionMessage": "Thank you for your submission! We've received your hackathon project details and will review your entry. Good luck!",
+"assistantContext": "You are an encouraging startup mentor who celebrates progress, clarifies logistics, and nudges founders to be crisp and complete in their answers.",
+"webhookUrl": "https://kvuozlywgwsnrnhnmhjs.supabase.co/functions/v1/webhook-echo",
+"saveOnTheGo": true,
+"fields": [
+  {
+    "id": "table-number",
+    "text": "What's your table number?",
+    "type": "text",
+    "validation": {
+      "required": true,
+      "failure_message": "Please provide your table number to help us identify your team's location."
+    },
+    "ai_prompt": "Accept any reasonable table number or identifier. If the response is unclear, ask for the table number assigned to their team."
+  },
+  {
+    "id": "team-name",
+    "text": "What's your team name?",
+    "type": "text",
+    "validation": {
+      "required": true,
+      "failure_message": "Please share your team name so we can properly credit your submission."
+    },
+    "ai_prompt": "Accept any team name the user provides. If they're unsure, encourage them to choose a name for their team."
+  },
+  {
+    "id": "team-lead-name",
+    "text": "Who's your team lead - Full name? (Team member 1)",
+    "type": "text",
+    "validation": {
+      "required": true,
+      "min_words": 2,
+      "failure_message": "Please provide the team lead's full name, including both first and last name."
+    },
+    "ai_prompt": "Ensure the answer includes at least a first and last name. If only one name is provided, ask for the complete full name."
+  },
+  {
+    "id": "team-lead-email",
+    "text": "What's your team lead's email?",
+    "type": "email",
+    "validation": {
+      "required": true,
+      "failure_message": "Please provide a valid email address for the team lead."
+    },
+    "ai_prompt": "Confirm the response is a valid email address containing '@' and a domain. If it's formatted incorrectly, explain the issue and ask them to try again."
+  },
+  {
+    "id": "team-lead-luma-email",
+    "text": "What's your team lead's email on Luma (if different)?",
+    "type": "email",
+    "validation": {
+      "required": false,
+      "failure_message": "If provided, please ensure this is a valid email address."
+    },
+    "ai_prompt": "This is optional. Only accept if the user volunteers a different email address for Luma. If they say it's the same or skip it, move on."
+  },
+  {
+    "id": "team-size",
+    "text": "Number of people on your team?",
+    "type": "select",
+    "options": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "More (not eligible for winning & prizes)"
+    ],
+    "validation": {
+      "required": true,
+      "failure_message": "Please select the number of team members. Note: teams with more than 4 people are not eligible for prizes."
+    },
+    "ai_prompt": "If the user provides a number, match it to the closest option. If they have more than 4 people, inform them that they won't be eligible for prizes but can still participate."
+  },
+  {
+    "id": "other-team-members",
+    "text": "Team Member Names: What's the full name and email address for your other team members?",
+    "type": "text",
+    "validation": {
+      "required": false,
+      "failure_message": "If you have other team members, please provide their full names and email addresses."
+    },
+    "ai_prompt": "This is optional but recommended if there are multiple team members. Accept names and emails in any reasonable format. If the team has only one person, acknowledge and move on."
+  },
+  {
+    "id": "tagline",
+    "text": "Tagline/Elevator Pitch: One-sentence project description",
+    "type": "text",
+    "validation": {
+      "required": true,
+      "failure_message": "Please provide a one-sentence description that captures the essence of your project."
+    },
+    "ai_prompt": "Request a concise, single-sentence pitch. If the response is too long or multiple sentences, ask them to condense it into one compelling sentence."
+  },
+  {
+    "id": "project-description",
+    "text": "Description of Project: Tell us about your project! Please include: Objective (problem/need), Solution Overview, Technology Stack, Innovation (what's different), Target Audience, Future Potential, and Challenges Faced.",
+    "type": "text",
+    "validation": {
+      "required": true,
+      "failure_message": "Please provide a comprehensive project description covering the key aspects listed."
+    },
+    "ai_prompt": "Encourage the user to cover all the requested points: objective, solution, tech stack, innovation, target audience, future potential, and challenges. If they miss major sections, prompt them to elaborate on those areas."
+  },
+  {
+    "id": "software-stack",
+    "text": "Software stack / technologies used",
+    "type": "text",
+    "validation": {
+      "required": true,
+      "failure_message": "Please list the technologies, frameworks, and tools you used in your project."
+    },
+    "ai_prompt": "Accept a list of technologies in any format. If they haven't mentioned the sponsor technologies they used, remind them to include those as well."
+  },
+  {
+    "id": "main-submission-link",
+    "text": "Main Submission Link: Please provide the link to your main submission, such as a demo, Loom video, or pitch deck.",
+    "type": "text",
+    "validation": {
+      "required": true,
+      "failure_message": "Please provide a valid URL to your main submission (demo, video, or pitch deck)."
+    },
+    "ai_prompt": "Verify the response looks like a URL (contains http://, https://, or a recognizable domain). If it doesn't appear to be a valid link, ask them to provide the complete URL."
+  },
+  {
+    "id": "github-link",
+    "text": "Github Link",
+    "type": "text",
+    "validation": {
+      "required": true,
+      "failure_message": "Please provide your GitHub repository URL."
+    },
+    "ai_prompt": "Confirm the response is a GitHub link (typically contains 'github.com'). If it's not a valid GitHub URL, ask them to provide the correct repository link."
+  },
+  {
+    "id": "live-website",
+    "text": "Live website (optional)",
+    "type": "text",
+    "validation": {
+      "required": false,
+      "failure_message": "If provided, please ensure this is a valid website URL."
+    },
+    "ai_prompt": "This is optional. If the user provides a URL, verify it looks valid. If they don't have a live site yet, acknowledge and move on."
+  },
+  {
+    "id": "additional-materials",
+    "text": "Additional Materials: Is there anything else you'd like to submit along with your project? Feel free to include any extra documents, diagrams, or links.",
+    "type": "text",
+    "validation": {
+      "required": false,
+      "failure_message": "If you have additional materials, please provide links or descriptions."
+    },
+    "ai_prompt": "This is optional. Accept any additional links, descriptions, or references to supplementary materials the team wants to share."
+  },
+  {
+    "id": "sponsor-tech-used",
+    "text": "Sponsor tech used: Which sponsor technologies did you use in your project?",
+    "type": "select",
+    "options": [
+      "Vercel",
+      "V0",
+      "ElevenLabs",
+      "Anthropic",
+      "Runware",
+      "Deepnote",
+      "DataCrunch",
+      "Medusa"
+    ],
+    "validation": {
+      "required": true,
+      "failure_message": "Please select at least one sponsor technology you used. You can choose multiple."
+    },
+    "ai_prompt": "The user can select one or multiple sponsor technologies. If they mention technologies that aren't on the list, ask them to choose from the available sponsor options."
+  },
+  {
+    "id": "sponsor-features-feedback",
+    "text": "Did you use any specific features from the sponsors' tools that you loved? Or that you didn't know about beforehand?",
+    "type": "text",
+    "validation": {
+      "required": false,
+      "failure_message": "Feel free to share any standout features from the sponsor tools you used."
+    },
+    "ai_prompt": "This is optional but encouraged. If the user shares insights about sponsor features, acknowledge them. If they skip it, move on."
+  },
+  {
+    "id": "track",
+    "text": "Track: Which track is your project in?",
+    "type": "select",
+    "options": [
+      "AI for Science",
+      "Agentic Commerce",
+      "Open Business Innovation"
+    ],
+    "validation": {
+      "required": true,
+      "failure_message": "Please select which track your project fits into."
+    },
+    "ai_prompt": "The user must choose one of the three tracks. If they're unsure, briefly explain what each track focuses on and help them decide."
+  },
+  {
+    "id": "data-consent",
+    "text": "Do you consent to the collection, storage, and use of your personal data as described in our privacy policy?",
+    "type": "select",
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "validation": {
+      "required": true,
+      "failure_message": "Please indicate whether you consent to data collection and use."
+    },
+    "ai_prompt": "This is required for participation. If the user selects 'No', inform them that consent is necessary to proceed with the submission."
+  },
+  {
+    "id": "project-timing-confirmation",
+    "text": "Can you confirm that this project was developed entirely during the hackathon period? (This can include the week before if you worked on it early)",
+    "type": "select",
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "validation": {
+      "required": true,
+      "failure_message": "Please confirm whether your project was developed during the hackathon period."
+    },
+    "ai_prompt": "This confirmation is required. If they select 'No', note that the project may not be eligible for judging under standard rules."
+  },
+  {
+    "id": "multimedia-permission",
+    "text": "Do you grant permission for the use of multimedia (photos and video) taken during the event in which you may be included?",
+    "type": "select",
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "validation": {
+      "required": true,
+      "failure_message": "Please indicate whether you grant permission for multimedia use."
+    },
+    "ai_prompt": "This permission is for promotional and educational purposes by the organizers. Accept their choice and move on."
+  },
+  {
+    "id": "additional-feedback",
+    "text": "Anything else? Any quick feedback about the event? Any other sponsors you want to see?",
+    "type": "text",
+    "validation": {
+      "required": false,
+      "failure_message": "Feel free to share any additional thoughts or feedback."
+    },
+    "ai_prompt": "This is completely optional. Accept any feedback, suggestions, or additional comments the user wants to share about their experience."
+  }
+]
+}

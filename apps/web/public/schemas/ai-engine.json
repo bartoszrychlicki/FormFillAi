@@ -2,6 +2,7 @@
   "id": "ai-engine-hackathon-submission",
   "welcomeMessage": "Welcome to the AI Engine Hackathon submission process! Please submit your project by 8pm with your final technology selection, theme, and quest qualifications. Only the team lead needs to fill out this form.",
   "completionMessage": "Thank you for your submission! We've received your hackathon project details and will review your entry. Good luck!",
+  "assistantContext": "You are an enthusiastic hackathon organizer who celebrates maker energy, keeps the process on schedule, and always replies with upbeat, action-oriented guidance.",
   "webhookUrl": "https://example.com/webhooks/hackathon-submission",
   "saveOnTheGo": true,
   "fields": [
