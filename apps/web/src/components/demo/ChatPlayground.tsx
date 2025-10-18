@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 
 import type { SchemaPreview } from "@/lib/conversation/schema-catalog";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { FormDisplay } from "@/components/chat/FormDisplay";
 import { ImportSchemaDialog } from "@/components/demo/ImportSchemaDialog";
 import type { ConversationSchema } from "@formfillai/shared";
 
@@ -15,6 +16,13 @@ export function ChatPlayground({ schemas }: ChatPlaygroundProps) {
   const [selectedId, setSelectedId] = useState(() => schemas[0]?.id ?? "");
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [importedSchema, setImportedSchema] = useState<SchemaPreview | null>(null);
+  const [loadedSchema, setLoadedSchema] = useState<ConversationSchema | null>(null);
+  const [collectedData, setCollectedData] = useState<Record<string, unknown>>({});
+  const [isPending, setIsPending] = useState(false);
+
+  const editHandlerRef = useRef<((fieldId: string, newValue: string) => Promise<void>) | null>(
+    null,
+  );
 
   const allSchemas = useMemo(() => {
     if (importedSchema) {
@@ -61,6 +69,33 @@ export function ChatPlayground({ schemas }: ChatPlaygroundProps) {
 
   const onSelectChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedId(event.target.value);
+    setLoadedSchema(null);
+    setCollectedData({});
+  };
+
+  const handleSchemaLoad = (schema: ConversationSchema) => {
+    setLoadedSchema(schema);
+    setCollectedData({});
+  };
+
+  const handleDataUpdate = (data: Record<string, unknown>) => {
+    setCollectedData(data);
+  };
+
+  const handlePendingChange = (pending: boolean) => {
+    setIsPending(pending);
+  };
+
+  const handleExposeEditHandler = (
+    handler: (fieldId: string, newValue: string) => Promise<void>,
+  ) => {
+    editHandlerRef.current = handler;
+  };
+
+  const handleFieldEditFromForm = (fieldId: string, newValue: string) => {
+    if (editHandlerRef.current) {
+      void editHandlerRef.current(fieldId, newValue);
+    }
   };
 
   return (
@@ -103,7 +138,21 @@ export function ChatPlayground({ schemas }: ChatPlaygroundProps) {
         </div>
       </div>
 
-      <ChatPanel schemaUrl={selectedSchema.schemaUrl} />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[60%_40%]">
+        <ChatPanel
+          schemaUrl={selectedSchema.schemaUrl}
+          onSchemaLoad={handleSchemaLoad}
+          onDataUpdate={handleDataUpdate}
+          onPendingChange={handlePendingChange}
+          onExposeEditHandler={handleExposeEditHandler}
+        />
+        <FormDisplay
+          schema={loadedSchema}
+          collectedData={collectedData}
+          onFieldEdit={handleFieldEditFromForm}
+          isPending={isPending}
+        />
+      </div>
 
       <ImportSchemaDialog
         isOpen={isImportDialogOpen}

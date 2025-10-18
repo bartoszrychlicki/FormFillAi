@@ -1,6 +1,6 @@
 "use client";
 
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { parseConversationSchema, type ConversationSchema } from "@formfillai/shared";
 
@@ -12,6 +12,10 @@ type ConversationStatus = "in_progress" | "completed";
 interface ChatPanelProps {
   schemaUrl: string;
   title?: string;
+  onSchemaLoad?: (schema: ConversationSchema) => void;
+  onDataUpdate?: (data: Record<string, unknown>) => void;
+  onPendingChange?: (isPending: boolean) => void;
+  onExposeEditHandler?: (handler: (fieldId: string, newValue: string) => Promise<void>) => void;
 }
 
 interface WebhookDebugInfo {
@@ -52,7 +56,14 @@ interface Message {
   text: string;
 }
 
-export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
+export function ChatPanel({
+  schemaUrl,
+  title,
+  onSchemaLoad,
+  onDataUpdate,
+  onPendingChange,
+  onExposeEditHandler,
+}: ChatPanelProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -65,12 +76,87 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
   const [schema, setSchema] = useState<ConversationSchema | null>(null);
   const [schemaDefinition, setSchemaDefinition] = useState<unknown>(null);
   const [schemaLoadError, setSchemaLoadError] = useState<string | null>(null);
+  const [collectedData, setCollectedData] = useState<Record<string, unknown>>({});
 
   const messageCounter = useRef(0);
   const nextMessageId = () => {
     messageCounter.current += 1;
     return `message-${messageCounter.current}`;
   };
+
+  const onSchemaLoadRef = useRef(onSchemaLoad);
+  useEffect(() => {
+    onSchemaLoadRef.current = onSchemaLoad;
+  }, [onSchemaLoad]);
+
+  const handleFieldEdit = useCallback(
+    async (fieldId: string, newValue: string) => {
+      if (!sessionId || isPending || !schema) {
+        return;
+      }
+
+      const updatedData = { ...collectedData, [fieldId]: newValue };
+      setCollectedData(updatedData);
+      onDataUpdate?.(updatedData);
+
+      const userMessage: Message = {
+        id: nextMessageId(),
+        role: "user",
+        text: newValue,
+      };
+
+      setMessages((previous) => [...previous, userMessage]);
+      setIsPending(true);
+      onPendingChange?.(true);
+      setError(null);
+
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            reply: { fieldId, value: newValue },
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Unexpected status ${response.status}`);
+        }
+
+        const payload = (await response.json()) as ApiResponse;
+        if (payload.debug?.webhook) {
+          console.info("[FormFillAI] Webhook delivery result", payload.debug.webhook);
+        }
+        setConversationStatus(payload.conversationStatus);
+        setCurrentField(payload.nextField);
+        setMessages((previous) => [
+          ...previous,
+          {
+            id: nextMessageId(),
+            role: "bot",
+            text: payload.botMessage,
+          },
+        ]);
+      } catch (err) {
+        console.error("Failed to update field", err);
+        setError("Unable to update the field. Please try again.");
+        setMessages((previous) => previous.slice(0, -1));
+        setCollectedData(collectedData);
+        onDataUpdate?.(collectedData);
+      } finally {
+        setIsPending(false);
+        onPendingChange?.(false);
+      }
+    },
+    [sessionId, isPending, schema, collectedData, onDataUpdate, onPendingChange],
+  );
+
+  useEffect(() => {
+    if (onExposeEditHandler) {
+      onExposeEditHandler(handleFieldEdit);
+    }
+  }, [onExposeEditHandler, handleFieldEdit]);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,6 +169,7 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
       setConversationStatus("in_progress");
       setCurrentField(null);
       setError(null);
+      setCollectedData({});
     };
 
     const loadSchemaAndStartConversation = async () => {
@@ -107,6 +194,7 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
 
         setSchema(parsed);
         setSchemaDefinition(definition);
+        onSchemaLoadRef.current?.(parsed);
 
         const startResponse = await fetch("/api/chat", {
           method: "POST",
@@ -159,16 +247,13 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
     };
   }, [schemaUrl]);
 
-  const submitReply = async (value: string, { viaSuggestion = false }: { viaSuggestion?: boolean } = {}) => {
+  const submitReply = async (
+    value: string,
+    { viaSuggestion = false }: { viaSuggestion?: boolean } = {},
+  ) => {
     const trimmed = viaSuggestion ? value : value.trim();
 
-    if (
-      !trimmed ||
-      !sessionId ||
-      isPending ||
-      conversationStatus === "completed" ||
-      !schema
-    ) {
+    if (!trimmed || !sessionId || isPending || conversationStatus === "completed" || !schema) {
       return;
     }
 
@@ -185,6 +270,7 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
       setInputValue("");
     }
     setIsPending(true);
+    onPendingChange?.(true);
     setError(null);
 
     try {
@@ -215,6 +301,12 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
           text: payload.botMessage,
         },
       ]);
+
+      if (fieldId) {
+        const updatedData = { ...collectedData, [fieldId]: trimmed };
+        setCollectedData(updatedData);
+        onDataUpdate?.(updatedData);
+      }
     } catch (err) {
       console.error("Failed to submit reply", err);
       setError("Unable to send your reply. Please try again.");
@@ -224,6 +316,7 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
       }
     } finally {
       setIsPending(false);
+      onPendingChange?.(false);
     }
   };
 
@@ -315,7 +408,9 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
       </div>
 
       <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
-        {currentField?.type === "select" && currentField.options && currentField.options.length > 0 ? (
+        {currentField?.type === "select" &&
+        currentField.options &&
+        currentField.options.length > 0 ? (
           <PromptSuggestions
             label="Quick replies"
             suggestions={currentField.options}
@@ -340,10 +435,10 @@ export function ChatPanel({ schemaUrl, title }: ChatPanelProps) {
             {conversationStatus === "completed"
               ? "Conversation completed"
               : isPending
-              ? "Sending…"
-              : messages.length === 0
-              ? ""
-              : "Waiting for your reply"}
+                ? "Sending…"
+                : messages.length === 0
+                  ? ""
+                  : "Waiting for your reply"}
           </span>
           <button
             type="submit"
