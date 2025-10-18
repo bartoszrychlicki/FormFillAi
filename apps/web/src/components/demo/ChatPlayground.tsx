@@ -103,7 +103,7 @@ export function ChatPlayground({ schemas }: ChatPlaygroundProps) {
         </div>
       </div>
 
-      <ChatPanel schemaUrl={selectedSchema.schemaUrl} title={`Loaded from ${selectedSchema.schemaUrl}`} />
+      <ChatPanel schemaUrl={selectedSchema.schemaUrl} />
 
       <ImportSchemaDialog
         isOpen={isImportDialogOpen}
