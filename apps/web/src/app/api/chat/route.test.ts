@@ -33,7 +33,7 @@ const createMockResult = (text: string) =>
     providerMetadata: undefined,
     experimental_providerMetadata: undefined,
     steps: [],
-  }) as any;
+  }) as unknown as Awaited<ReturnType<typeof generateText>>;
 
 const acceptMessage = (message: string, tail = "") =>
   createMockResult(`${JSON.stringify({ status: "accepted", message })}${tail}`);

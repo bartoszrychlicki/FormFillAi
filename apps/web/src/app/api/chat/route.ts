@@ -55,6 +55,9 @@ interface ChatResponse {
   botMessage: string;
   conversationStatus: "in_progress" | "completed";
   nextField: NextFieldPayload | null;
+  fieldAccepted?: boolean;
+  acceptedFieldId?: string;
+  enhancedAnswer?: string;
   debug?: ChatResponseDebug;
 }
 
@@ -188,6 +191,7 @@ export async function POST(request: Request) {
         botMessage,
         status: session.status,
         nextField: currentField,
+        fieldAccepted: false,
       }),
     );
   }
@@ -228,6 +232,7 @@ export async function POST(request: Request) {
           botMessage: followUpMessage,
           status: session.status,
           nextField: currentField,
+          fieldAccepted: false,
         }),
       );
     }
@@ -249,6 +254,17 @@ export async function POST(request: Request) {
     });
   }
 
+  let enhancedAnswer: string | null = null;
+  if (currentField.type === "text" && typeof validationOutcome.value === "string") {
+    enhancedAnswer = await enhanceAnswerGrammar({
+      answer: validationOutcome.value,
+      field: currentField,
+    });
+    if (enhancedAnswer) {
+      validationOutcome.value = enhancedAnswer;
+    }
+  }
+
   const currentIndex = schema.fields.findIndex((field) => field.id === currentField.id);
   const nextFieldCandidate = currentIndex >= 0 ? (schema.fields[currentIndex + 1] ?? null) : null;
 
@@ -267,6 +283,7 @@ export async function POST(request: Request) {
         botMessage: followUp.message,
         status: session.status,
         nextField: currentField,
+        fieldAccepted: false,
       }),
     );
   }
@@ -303,9 +320,67 @@ export async function POST(request: Request) {
       status: turn.session.status,
       nextField: turn.nextField,
       debug,
+      fieldAccepted: true,
+      acceptedFieldId: currentField.id,
+      enhancedAnswer: enhancedAnswer ?? undefined,
     }),
   );
 }
+
+const enhanceAnswerGrammar = async ({
+  answer,
+  field,
+}: {
+  answer: string;
+  field: ConversationField;
+}): Promise<string | null> => {
+  if (answer.trim().length < 5) {
+    return null;
+  }
+
+  const prompt = `You are a grammar enhancement assistant. Your task is to improve the grammar and readability of user responses while preserving their original meaning, tone, and style.
+
+Original answer: ${answer}
+Question context: ${field.text}
+
+Rules:
+1. Fix grammar, spelling, and punctuation errors
+2. Preserve the original meaning completely
+3. Keep the same tone and level of formality
+4. Do not add new information
+5. Do not remove any substantive content
+6. Keep technical terms and proper nouns unchanged
+7. If the answer is already grammatically correct, return it unchanged
+
+Return ONLY the enhanced answer text without any explanation, quotes, or commentary.`;
+
+  try {
+    const result = await generateText({
+      model: anthropic("claude-3-5-haiku-20241022"),
+      prompt,
+    });
+
+    const enhanced = result.text.trim();
+
+    if (enhanced.length === 0 || enhanced === answer) {
+      return null;
+    }
+
+    const lengthRatio = enhanced.length / answer.length;
+    if (lengthRatio < 0.5 || lengthRatio > 2.0) {
+      console.warn("Grammar enhancement changed length too much, skipping", {
+        original: answer,
+        enhanced,
+      });
+      return null;
+    }
+
+    return enhanced;
+  } catch (error) {
+    console.error("Failed to enhance answer grammar", error);
+    return null;
+  }
+};
 
 const buildResponse = ({
   sessionId,
@@ -313,17 +388,26 @@ const buildResponse = ({
   status,
   nextField,
   debug,
+  fieldAccepted,
+  acceptedFieldId,
+  enhancedAnswer,
 }: {
   sessionId: string;
   botMessage: string;
   status: "in_progress" | "completed" | "abandoned";
   nextField: ConversationField | null;
   debug?: ChatResponseDebug;
+  fieldAccepted?: boolean;
+  acceptedFieldId?: string;
+  enhancedAnswer?: string;
 }): ChatResponse => ({
   sessionId,
   botMessage,
   conversationStatus: status === "abandoned" ? "in_progress" : status,
   nextField: nextField ? serialiseField(nextField) : null,
+  ...(fieldAccepted !== undefined ? { fieldAccepted } : {}),
+  ...(acceptedFieldId ? { acceptedFieldId } : {}),
+  ...(enhancedAnswer ? { enhancedAnswer } : {}),
   ...(debug ? { debug } : {}),
 });
 
